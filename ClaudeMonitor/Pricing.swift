@@ -18,7 +18,9 @@ enum Pricing {
     static func rates(for model: String) -> Rates {
         let m = model.lowercased()
         if m.contains("opus") {
-            return Rates(input: 15.0, output: 75.0, cacheWrite: 18.75, cacheRead: 1.50)
+            // Opus 4.6 / 4.8. (Opus 4 / 4.1 lama lebih mahal: 15/75/18.75/1.50.)
+            // Diverifikasi terhadap ccusage: cocok untuk opus-4-6 & opus-4-8.
+            return Rates(input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.50)
         }
         if m.contains("haiku") {
             return Rates(input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.10)
