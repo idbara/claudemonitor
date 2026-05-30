@@ -15,9 +15,10 @@ struct ClaudeMonitorApp: App {
         MenuBarExtra {
             QuotaPopover(store: store)
         } label: {
+            // Warna oranye brand dipertahankan (original), bukan monokrom.
             // Ukuran ikon diatur lewat padding di dalam SVG (frame diabaikan menu bar).
             Image("ClaudeLogo")
-                .renderingMode(.template)
+                .renderingMode(.original)
             Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
