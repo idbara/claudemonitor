@@ -15,7 +15,11 @@ struct ClaudeMonitorApp: App {
         MenuBarExtra {
             QuotaPopover(store: store)
         } label: {
-            Image(systemName: "cpu")
+            Image("ClaudeLogo")
+                .renderingMode(.original)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
             Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
