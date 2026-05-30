@@ -9,70 +9,58 @@ import SwiftUI
 
 @main
 struct ClaudeMonitorApp: App {
-    @StateObject private var store = UsageStore()
+    @StateObject private var store = QuotaStore()
 
     var body: some Scene {
-        // Label menu bar = equivalent cost hari ini.
         MenuBarExtra {
-            UsagePopover(store: store)
+            QuotaPopover(store: store)
         } label: {
             Image(systemName: "cpu")
-            Text("≈ $\(store.stats.todayCost, specifier: "%.2f")")
+            Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
     }
+
+    /// Label menu bar = utilisasi window 5 jam, mis. "5h 26%".
+    private var menuLabel: String {
+        if let u = store.quota?.fiveHour?.utilization {
+            return "5h \(Int(u.rounded()))%"
+        }
+        return ""
+    }
 }
 
-/// Isi popover menu bar.
-struct UsagePopover: View {
-    @ObservedObject var store: UsageStore
+/// Isi popover: satu meter per window kuota.
+struct QuotaPopover: View {
+    @ObservedObject var store: QuotaStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Claude Code Usage")
+            Text("Kuota Claude")
                 .font(.headline)
-            Text("≈ equivalent cost (subscription — bukan tagihan nyata)")
+            Text("Langsung dari Anthropic (akun Max)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
 
             Divider()
 
-            if store.stats.isEmpty {
-                Text("Belum ada data usage")
+            switch store.state {
+            case .loading where store.quota == nil:
+                Text("Memuat…").foregroundColor(.secondary)
+            case .needsLogin:
+                Text("Sesi kedaluwarsa — login ulang di Claude Code")
                     .foregroundColor(.secondary)
-            } else {
-                amountRow("Hari ini", tokens: store.stats.todayTokens, cost: store.stats.todayCost)
-
-                if let start = store.stats.blockStart {
-                    VStack(alignment: .leading, spacing: 2) {
-                        amountRow("Sesi 5-jam", tokens: store.stats.blockTokens, cost: store.stats.blockCost)
-                        Text("mulai \(start, format: .dateTime.hour().minute())")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
+            case .error(let msg):
+                Text(msg).foregroundColor(.secondary)
+            default:
+                if let q = store.quota {
+                    meter("Session (5 jam)", q.fiveHour)
+                    meter("Weekly (7 hari)", q.sevenDay)
+                    meter("Weekly Sonnet (7 hari)", q.sevenDaySonnet)
+                    meter("Weekly Opus (7 hari)", q.sevenDayOpus)
                 } else {
-                    HStack {
-                        Text("Sesi 5-jam")
-                        Spacer()
-                        Text("tidak aktif").foregroundColor(.secondary)
-                    }
+                    Text("Memuat…").foregroundColor(.secondary)
                 }
-
-                Divider()
-                Text("Per model (hari ini)")
-                    .font(.subheadline).bold()
-                ForEach(store.stats.perModel) { m in
-                    HStack {
-                        Text(shortModel(m.model))
-                        Spacer()
-                        Text("≈ $\(m.cost, specifier: "%.2f")")
-                            .foregroundColor(.secondary)
-                    }
-                    .font(.caption)
-                }
-
-                Divider()
-                amountRow("Bulan ini", tokens: store.stats.monthTokens, cost: store.stats.monthCost)
             }
 
             Divider()
@@ -90,29 +78,39 @@ struct UsagePopover: View {
             }
         }
         .padding()
-        .frame(width: 260)
+        .frame(width: 280)
         .onAppear { store.refresh() }
     }
 
+    /// Tampilkan meter hanya bila window tidak nil.
     @ViewBuilder
-    private func amountRow(_ title: String, tokens: Int, cost: Double) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            VStack(alignment: .trailing) {
-                Text("≈ $\(cost, specifier: "%.2f")").bold()
-                Text("\(tokens.formatted()) tok")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+    private func meter(_ title: String, _ window: QuotaWindow?) -> some View {
+        if let w = window {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(title).font(.subheadline)
+                    Spacer()
+                    Text("\(Int(w.utilization.rounded()))%")
+                        .font(.subheadline).bold()
+                }
+                ProgressView(value: min(max(w.utilization, 0), 100), total: 100)
+                if let reset = w.resetsAt {
+                    Text("reset dalam \(Self.countdown(to: reset))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }
 
-    private func shortModel(_ model: String) -> String {
-        let m = model.lowercased()
-        if m.contains("opus") { return "Opus" }
-        if m.contains("sonnet") { return "Sonnet" }
-        if m.contains("haiku") { return "Haiku" }
-        return model
+    /// "Xj Ym" sampai `date` (atau "<1m" / "sekarang").
+    static func countdown(to date: Date) -> String {
+        let secs = Int(date.timeIntervalSinceNow)
+        if secs <= 0 { return "sekarang" }
+        let h = secs / 3600
+        let m = (secs % 3600) / 60
+        if h > 0 { return "\(h)j \(m)m" }
+        if m > 0 { return "\(m)m" }
+        return "<1m"
     }
 }
