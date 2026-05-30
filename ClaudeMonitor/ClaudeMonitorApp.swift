@@ -55,21 +55,21 @@ struct QuotaPopover: View {
 
             Divider()
 
-            switch store.state {
-            case .loading where store.quota == nil:
-                Text("Memuat…").foregroundColor(.secondary)
-            case .needsLogin:
-                Text("Sesi kedaluwarsa — login ulang di Claude Code")
-                    .foregroundColor(.secondary)
-            case .error(let msg):
-                Text(msg).foregroundColor(.secondary)
-            default:
-                if let q = store.quota {
-                    meter("Session (5 jam)", q.fiveHour)
-                    meter("Weekly (7 hari)", q.sevenDay)
-                    meter("Weekly Sonnet (7 hari)", q.sevenDaySonnet)
-                    meter("Weekly Opus (7 hari)", q.sevenDayOpus)
-                } else {
+            // Selalu tampilkan data bila ada — kegagalan sesaat (mis. rate limit)
+            // tidak mengosongkan meter; hanya tampilkan pesan saat belum ada data.
+            if let q = store.quota {
+                meter("Session (5 jam)", q.fiveHour)
+                meter("Weekly (7 hari)", q.sevenDay)
+                meter("Weekly Sonnet (7 hari)", q.sevenDaySonnet)
+                meter("Weekly Opus (7 hari)", q.sevenDayOpus)
+            } else {
+                switch store.state {
+                case .needsLogin:
+                    Text("Sesi kedaluwarsa — login ulang di Claude Code")
+                        .foregroundColor(.secondary)
+                case .error(let msg):
+                    Text(msg).foregroundColor(.secondary)
+                default:
                     Text("Memuat…").foregroundColor(.secondary)
                 }
             }
@@ -90,7 +90,7 @@ struct QuotaPopover: View {
         }
         .padding()
         .frame(width: 280)
-        .onAppear { store.refresh() }
+        .onAppear { store.refreshIfStale() }
     }
 
     /// Tampilkan meter hanya bila window tidak nil.

@@ -6,9 +6,10 @@
 import Foundation
 
 enum QuotaClientError: Error {
-    case unauthorized          // 401/403 — token ditolak
-    case badResponse           // status non-2xx lain / body tak terbaca
-    case network(Error)        // gangguan transport
+    case unauthorized                          // 401/403 — token ditolak
+    case rateLimited(retryAfter: TimeInterval?) // 429 — endpoint dibatasi
+    case badResponse                           // status non-2xx lain / body tak terbaca
+    case network(Error)                        // gangguan transport
 }
 
 enum QuotaClient {
@@ -57,6 +58,10 @@ enum QuotaClient {
         }
         if http.statusCode == 401 || http.statusCode == 403 {
             throw QuotaClientError.unauthorized
+        }
+        if http.statusCode == 429 {
+            let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            throw QuotaClientError.rateLimited(retryAfter: retry)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw QuotaClientError.badResponse
