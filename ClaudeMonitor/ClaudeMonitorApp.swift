@@ -16,10 +16,10 @@ struct ClaudeMonitorApp: App {
             QuotaPopover(store: store)
         } label: {
             Image("ClaudeLogo")
-                .renderingMode(.original)
+                .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 18, height: 18)
+                .frame(width: 16, height: 16)
             Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
