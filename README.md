@@ -45,6 +45,14 @@ Hasil build adalah **`Claude Monitor.app`** (di folder `Build/Products/Debug` pa
 
 > Tidak ada test target di proyek ini. Verifikasi dilakukan lewat build yang sukses dan membandingkan angka dengan `/usage` Claude Code atau `curl` (lihat **Verifikasi**).
 
+### Membuat installer (.dmg)
+
+```bash
+./make-dmg.sh
+```
+
+Script mem-build versi **Release** lalu mengemasnya menjadi `dist/Claude Monitor.dmg` (berisi app + alias `Applications` untuk drag-install). App di-*ad-hoc sign* (tanpa Developer ID/notarization), jadi di Mac lain Gatekeeper mungkin memblokir — klik kanan app → **Open**, atau jalankan `xattr -dr com.apple.quarantine "/Applications/Claude Monitor.app"`.
+
 ---
 
 ## Penggunaan

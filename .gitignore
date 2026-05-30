@@ -28,3 +28,6 @@ Carthage/Build/
 # Claude Code / harness (data lokal, jangan di-commit)
 .claude/
 .remember/
+
+# Output dmg
+dist/
