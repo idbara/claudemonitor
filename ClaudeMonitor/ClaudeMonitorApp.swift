@@ -36,11 +36,22 @@ struct QuotaPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Kuota Claude")
-                .font(.headline)
-            Text("Langsung dari Anthropic (akun Max)")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            HStack(spacing: 6) {
+                Text(store.profile?.fullName ?? "Kuota Claude")
+                    .font(.headline)
+                if store.profile?.hasClaudeMax == true {
+                    Text("Max")
+                        .font(.caption2).bold()
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.2))
+                        .clipShape(Capsule())
+                }
+            }
+            if let email = store.profile?.email {
+                Text(email)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
 
             Divider()
 

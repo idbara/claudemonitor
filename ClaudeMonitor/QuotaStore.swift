@@ -16,6 +16,7 @@ enum QuotaState: Equatable {
 @MainActor
 final class QuotaStore: ObservableObject {
     @Published var quota: QuotaUsage?
+    @Published var profile: Profile?
     @Published var state: QuotaState = .loading
     @Published var lastUpdated: Date?
 
@@ -34,6 +35,10 @@ final class QuotaStore: ObservableObject {
         Task { [weak self] in
             do {
                 let creds = try Credentials.load()
+                // Profil jarang berubah — ambil sekali saja (best-effort).
+                if self?.profile == nil {
+                    self?.profile = try? await QuotaClient.fetchProfile(accessToken: creds.accessToken)
+                }
                 let usage = try await QuotaClient.fetch(accessToken: creds.accessToken)
                 self?.quota = usage
                 self?.state = .ok

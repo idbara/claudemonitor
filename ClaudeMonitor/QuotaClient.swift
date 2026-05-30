@@ -12,11 +12,32 @@ enum QuotaClientError: Error {
 }
 
 enum QuotaClient {
-    private static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    private static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    private static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
 
     /// Ambil kuota dari Anthropic memakai access token OAuth.
     static func fetch(accessToken: String) async throws -> QuotaUsage {
-        var req = URLRequest(url: endpoint)
+        let data = try await get(usageURL, accessToken: accessToken)
+        do {
+            return try JSONDecoder().decode(QuotaUsage.self, from: data)
+        } catch {
+            throw QuotaClientError.badResponse
+        }
+    }
+
+    /// Ambil profil akun (nama, email, status Max).
+    static func fetchProfile(accessToken: String) async throws -> Profile {
+        let data = try await get(profileURL, accessToken: accessToken)
+        do {
+            return try JSONDecoder().decode(Profile.self, from: data)
+        } catch {
+            throw QuotaClientError.badResponse
+        }
+    }
+
+    /// GET ber-OAuth ke endpoint Anthropic; map status ke QuotaClientError.
+    private static func get(_ url: URL, accessToken: String) async throws -> Data {
+        var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
@@ -40,10 +61,6 @@ enum QuotaClient {
         guard (200..<300).contains(http.statusCode) else {
             throw QuotaClientError.badResponse
         }
-        do {
-            return try JSONDecoder().decode(QuotaUsage.self, from: data)
-        } catch {
-            throw QuotaClientError.badResponse
-        }
+        return data
     }
 }
