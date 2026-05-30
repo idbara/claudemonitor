@@ -91,6 +91,7 @@ struct UsagePopover: View {
         }
         .padding()
         .frame(width: 260)
+        .onAppear { store.refresh() }
     }
 
     @ViewBuilder

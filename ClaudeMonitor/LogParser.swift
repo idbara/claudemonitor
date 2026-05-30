@@ -55,10 +55,10 @@ enum LogParser {
               let usage = message["usage"] as? [String: Any] else { return nil }
 
         let model = message["model"] as? String ?? "unknown"
-        let input = usage["input_tokens"] as? Int ?? 0
-        let output = usage["output_tokens"] as? Int ?? 0
-        let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
-        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+        let input = intValue(usage["input_tokens"])
+        let output = intValue(usage["output_tokens"])
+        let cacheCreation = intValue(usage["cache_creation_input_tokens"])
+        let cacheRead = intValue(usage["cache_read_input_tokens"])
 
         let tsString = obj["timestamp"] as? String ?? ""
         let timestamp = iso.date(from: tsString)
@@ -79,5 +79,12 @@ enum LogParser {
             cacheReadTokens: cacheRead,
             dedupKey: dedupKey
         )
+    }
+
+    /// Token count bisa terbaca sebagai Int atau Double dari JSONSerialization.
+    private static func intValue(_ any: Any?) -> Int {
+        if let i = any as? Int { return i }
+        if let d = any as? Double { return Int(d) }
+        return 0
     }
 }

@@ -32,13 +32,13 @@ final class UsageStore: ObservableObject {
             from: calendar.dateComponents([.year, .month], from: now)
         ) ?? now
 
-        Task.detached(priority: .utility) {
+        Task.detached(priority: .utility) { [weak self] in
             let entries = LogParser.parseEntries(since: startOfMonth)
             let stats = UsageAggregator.aggregate(entries: entries, now: now, calendar: calendar)
             await MainActor.run {
-                self.stats = stats
-                self.lastUpdated = Date()
-                self.isRefreshing = false
+                self?.stats = stats
+                self?.lastUpdated = Date()
+                self?.isRefreshing = false
             }
         }
     }
