@@ -15,8 +15,10 @@ struct ClaudeMonitorApp: App {
         MenuBarExtra {
             QuotaPopover(store: store)
         } label: {
-            // Ikon di-embed dalam Text agar ukurannya mengikuti ukuran teks.
-            Text("\(Image("ClaudeLogo")) \(menuLabel)")
+            // Ukuran ikon diatur lewat padding di dalam SVG (frame diabaikan menu bar).
+            Image("ClaudeLogo")
+                .renderingMode(.template)
+            Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
     }
