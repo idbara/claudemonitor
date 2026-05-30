@@ -65,10 +65,13 @@ enum LogParser {
             ?? isoNoFrac.date(from: tsString)
             ?? Date(timeIntervalSince1970: 0)
 
-        var dedupKey: String?
-        if let mid = message["id"] as? String, let rid = obj["requestId"] as? String {
-            dedupKey = "\(mid):\(rid)"
-        }
+        // Dedup utama pakai message.id (unik per respons API). Saat sesi di-resume,
+        // pesan lama diputar ulang TANPA requestId tapi message.id-nya tetap sama —
+        // jadi message.id yang benar untuk dedup (diverifikasi cocok dgn ccusage).
+        // Fallback ke requestId lalu uuid agar tiap baris tetap punya key unik.
+        let dedupKey = (message["id"] as? String)
+            ?? (obj["requestId"] as? String)
+            ?? (obj["uuid"] as? String)
 
         return UsageEntry(
             timestamp: timestamp,
