@@ -95,7 +95,7 @@ enum UsageAggregator {
         for ts in sorted {
             let sinceStart = ts.timeIntervalSince(blockStart)
             let sinceLast = ts.timeIntervalSince(lastTimestamp)
-            if sinceStart > blockDuration || sinceLast > blockDuration {
+            if sinceStart >= blockDuration || sinceLast >= blockDuration {
                 blockStart = floorToHour(ts, calendar: calendar)
             }
             lastTimestamp = ts
