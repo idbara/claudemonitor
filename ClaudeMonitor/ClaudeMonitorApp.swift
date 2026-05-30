@@ -19,7 +19,7 @@ struct ClaudeMonitorApp: App {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 16, height: 16)
+                .frame(width: 14, height: 14)
             Text(menuLabel)
         }
         .menuBarExtraStyle(.window)
