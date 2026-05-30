@@ -15,12 +15,8 @@ struct ClaudeMonitorApp: App {
         MenuBarExtra {
             QuotaPopover(store: store)
         } label: {
-            Image("ClaudeLogo")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 12, height: 12)
-            Text(menuLabel)
+            // Ikon di-embed dalam Text agar ukurannya mengikuti ukuran teks.
+            Text("\(Image("ClaudeLogo")) \(menuLabel)")
         }
         .menuBarExtraStyle(.window)
     }
