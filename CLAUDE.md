@@ -18,6 +18,7 @@ The app lives entirely in the menu bar via `MenuBarExtra` with `.menuBarExtraSty
 ### Key facts (don't regress these)
 
 - **App Sandbox is disabled** (`ENABLE_APP_SANDBOX = NO` in both configs). Required: a sandboxed app cannot read another app's Keychain item or make network calls without entitlements.
+- **Stable code signing is required, NOT ad-hoc** (`CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY = "Claude Monitor Self-Signed"` in both target configs). Keychain "Always Allow" trust is pinned to the app's designated requirement; an ad-hoc signature's DR is `cdhash H"…"` which changes every rebuild, so macOS re-prompts for the login password on every build. With the self-signed cert the DR is `identifier "id.misindo.ClaudeMonitor" and certificate leaf = H"…"` — constant across rebuilds, so the prompt appears once and never again. **Do not revert to Automatic/ad-hoc.** On a fresh machine/clone the cert must exist in the login keychain (`security find-identity -v -p codesigning` must list it); recreate it with openssl (codeSigning EKU) → `security import` (non-empty PKCS12 password, `-macalg sha1`) → `security add-trusted-cert -r trustRoot -p codeSign`.
 - The OAuth token is sent **only** to `api.anthropic.com`. Token refresh is **not** implemented — on 401 the UI shows "login ulang di Claude Code" (Claude Code keeps the Keychain token fresh).
 
 To re-verify after changes, `curl` the same endpoint with the token and compare to the popover:

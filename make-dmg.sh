@@ -43,6 +43,7 @@ hdiutil create -volname "$VOL_NAME" -srcfolder "$STAGE" -ov -format UDZO "$OUT" 
 echo "==> Selesai:"
 ls -lh "$OUT"
 echo
-echo "Catatan: app di-ad-hoc sign (tanpa Developer ID / notarization)."
+echo "Catatan: app di-sign dgn sertifikat self-signed \"Claude Monitor Self-Signed\""
+echo "  (tanpa Developer ID / notarization)."
 echo "Di Mac lain, jika Gatekeeper memblokir: klik kanan app -> Open, atau"
 echo "  xattr -dr com.apple.quarantine \"/Applications/${APP_NAME}.app\""
