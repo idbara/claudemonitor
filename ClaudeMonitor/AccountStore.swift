@@ -156,6 +156,9 @@ final class AccountStore: ObservableObject {
         let result = Self.arrange(order.compactMap { all[$0] })
         accounts = result.visible
         recommendedID = result.recommendedID
+        // Ekspor untuk `cc` (ganti akun otomatis) — tanpa token/email.
+        AccountsExport.write(AccountsExport.json(visible: accounts, recommendedID: recommendedID, now: Date()),
+                             to: AccountsExport.defaultURL)
     }
 
     /// Gabung duplikat (uuid sama), pilih ★ dari akun yang datanya segar, urutkan ★ → default → label.

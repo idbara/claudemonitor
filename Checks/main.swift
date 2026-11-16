@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation
@@ -52,6 +52,7 @@ check(built.map(\.label) == ["default", "abati"], "discoveryDropsOrphansDefaultF
 check(built.first?.command == "claude", "discoveryDefaultCommand")
 check(built.last?.command == "CLAUDE_CONFIG_DIR=~/.claude-abati claude", "discoverySuffixedCommand")
 check(built.last?.id == "Claude Code-credentials-c6b43821", "discoveryIdIsService")
+check(built.last?.configDir == "/Users/bara/.claude-abati" && built.first?.configDir == nil, "discoveryConfigDir")
 
 // Profile: uuid dari respons API; ProfileCache simpan per service.
 let profileJSON = #"{"account":{"uuid":"u-1","email":"a@b.c","full_name":"Bara","has_claude_max":true}}"#
@@ -72,7 +73,7 @@ func usage(_ five: Double, _ seven: Double) -> QuotaUsage {
     return try! JSONDecoder().decode(QuotaUsage.self, from: Data(json.utf8))
 }
 func status(_ service: String, _ label: String, uuid: String?, exp: Double?, state: AccountState, quota: QuotaUsage?) -> AccountStatus {
-    AccountStatus(account: Account(id: service, service: service, label: label, command: "claude"),
+    AccountStatus(account: Account(id: service, service: service, label: label, command: "claude", configDir: nil),
                   profile: uuid.map { CachedProfile(uuid: $0, fullName: nil, email: nil, hasClaudeMax: false) },
                   quota: quota, state: state, expiresAt: exp.map { Date(timeIntervalSince1970: $0) })
 }
@@ -94,6 +95,20 @@ let full = AccountStore.arrange([
 ])
 check(full.recommendedID == nil, "arrangeAllFullNoStar")
 check(AccountStore.menuLabel(visible: full.visible, recommendedID: full.recommendedID) == "5h 100%", "storeMenuLabelFallsBackToDefault")
+
+// AccountsExport: accounts.json untuk `cc` — tanpa token/email.
+let exportData = AccountsExport.json(visible: arranged.visible, recommendedID: arranged.recommendedID,
+                                     now: Date(timeIntervalSince1970: 0))
+let exported = (try? JSONSerialization.jsonObject(with: exportData)) as? [String: Any]
+let exportedAccounts = exported?["accounts"] as? [[String: Any]] ?? []
+check(exported?["recommended"] as? String == "svc-abati", "exportRecommended")
+check(exported?["updatedAt"] as? String == "1970-01-01T00:00:00Z", "exportUpdatedAt")
+check(exportedAccounts.first?["headroom"] as? Double == 60.0, "exportHeadroom")
+check(exportedAccounts.first?["state"] as? String == "ok", "exportStateOk")
+check(exportedAccounts.first { $0["id"] as? String == "svc-zed" }?["state"] as? String == "expired", "exportStateExpired")
+check(exportedAccounts.first?.keys.contains("configDir") == true, "exportHasConfigDirKey")
+let exportText = String(decoding: exportData, as: UTF8.self)
+check(!exportText.contains("email") && !exportText.contains("accessToken"), "exportNoSecrets")
 
 if failures.isEmpty {
     print("ALL CHECKS PASSED")

@@ -11,6 +11,8 @@ nonisolated struct Account: Identifiable, Hashable {
     let service: String
     let label: String
     let command: String
+    /// Path absolut folder config; nil untuk akun default (~/.claude).
+    let configDir: String?
 }
 
 nonisolated enum AccountDiscovery {
@@ -43,10 +45,12 @@ nonisolated enum AccountDiscovery {
                 guard let dir = dirBySuffix[suffix] else { continue }  // yatim
                 accounts.append(Account(id: service, service: service,
                                         label: AccountMath.label(forDirName: dir),
-                                        command: AccountMath.launchCommand(dirName: dir, home: home)))
+                                        command: AccountMath.launchCommand(dirName: dir, home: home),
+                                        configDir: "\(home)/\(dir)"))
             } else {
                 accounts.append(Account(id: service, service: service, label: "default",
-                                        command: AccountMath.launchCommand(dirName: nil, home: home)))
+                                        command: AccountMath.launchCommand(dirName: nil, home: home),
+                                        configDir: nil))
             }
         }
         return accounts.sorted { a, b in
