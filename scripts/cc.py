@@ -19,12 +19,18 @@ import json
 import os
 import signal
 import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
 DEFAULT_SERVICE = "Claude Code-credentials"
 MONITOR_MAX_AGE = 900          # detik; accounts.json lebih tua dari ini dianggap basi
 DEFAULT_LIMIT_SECONDS = 3600   # lama akun dianggap penuh bila waktu reset tak diketahui
+MONITOR_PATH = Path.home() / "Library/Application Support/ClaudeMonitor/accounts.json"
+SWITCH_DIR = Path.home() / ".claude-switch"
+LIMITED_PATH = SWITCH_DIR / "limited.json"
+CONTINUE_PROMPT = "lanjutkan"
 
 
 # ---------------------------------------------------------------- akun
@@ -163,3 +169,141 @@ def handle_hook(payload: dict, env, kill, parent_of, self_pid: int) -> bool:
     if claude_pid is not None:
         kill(claude_pid, signal.SIGTERM)
     return True
+
+
+# ---------------------------------------------------------------- run loop
+
+VALUE_FLAGS = ("--model", "--permission-mode", "--add-dir")
+BARE_FLAGS = ("--dangerously-skip-permissions",)
+
+
+def kept_flags(argv: list[str]) -> list[str]:
+    """Flag yang ikut dibawa saat melanjutkan di akun lain."""
+    kept, i = [], 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in VALUE_FLAGS and i + 1 < len(argv):
+            kept += [arg, argv[i + 1]]
+            i += 2
+            continue
+        if arg in BARE_FLAGS or any(arg.startswith(f + "=") for f in VALUE_FLAGS):
+            kept.append(arg)
+        i += 1
+    return kept
+
+
+def _restore_terminal(out) -> None:
+    """claude dihentikan paksa — pastikan kursor tampil dan mode tty normal."""
+    if hasattr(out, "isatty") and out.isatty():
+        out.write("\x1b[?25h")
+        out.flush()
+        subprocess.call(["stty", "sane"], stderr=subprocess.DEVNULL)
+
+
+def run(argv: list[str], *, home: Path, monitor_path: Path, limited_path: Path, tmpdir: Path,
+        claude_bin: str, now, out, environ=None) -> int:
+    environ = dict(os.environ if environ is None else environ)
+    label, args = None, []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--account" and i + 1 < len(argv):
+            label = argv[i + 1]
+            i += 2
+            continue
+        args.append(argv[i])
+        i += 1
+
+    accounts = load_monitor(monitor_path, now()) or fallback_accounts(home)
+    limited = load_limited(limited_path)
+    if label is not None:
+        current = next((a for a in accounts if a.get("label") == label), None)
+        if current is None:
+            names = ", ".join(a.get("label", "?") for a in accounts)
+            out.write(f"cc: akun '{label}' tidak ditemukan (ada: {names})\n")
+            return 2
+    else:
+        current = pick_start(accounts, limited, now()) or accounts[0]
+
+    handoff = Path(tmpdir) / f"cc-{os.getpid()}.json"
+    claude_args, cwd, switches = args, None, 0
+    while True:
+        if handoff.exists():
+            handoff.unlink()
+        env = dict(environ)
+        env["CC_WRAPPER_PID"] = str(os.getpid())
+        env["CC_HANDOFF"] = str(handoff)
+        if current.get("configDir"):
+            env["CLAUDE_CONFIG_DIR"] = current["configDir"]
+        else:
+            env.pop("CLAUDE_CONFIG_DIR", None)
+        code = subprocess.call([claude_bin, *claude_args], env=env, cwd=cwd)
+        if not handoff.exists():
+            return code
+        try:
+            info = json.loads(handoff.read_text())
+        except (OSError, ValueError):
+            info = {}
+        handoff.unlink(missing_ok=True)
+        _restore_terminal(out)
+        if not info.get("session_id"):
+            return code
+
+        t = now()
+        reset = parse_iso(current.get("fiveHourResetsAt"))
+        mark_limited(limited_path, current["id"], reset if reset and reset > t else t + DEFAULT_LIMIT_SECONDS, t)
+        limited = load_limited(limited_path)
+        accounts = load_monitor(monitor_path, t) or accounts
+        nxt = pick_next(accounts, current["id"], limited, t) if switches < len(accounts) else None
+        if nxt is None:
+            soonest = min((v for v in limited.values() if v > t), default=t)
+            out.write(f"cc: semua akun penuh — reset paling cepat {time.strftime('%H:%M', time.localtime(soonest))}\n")
+            return 0
+        out.write(f"cc: limit di {current.get('label')} → lanjut di {nxt.get('label')}\n")
+        out.flush()
+        switches += 1
+        current = nxt
+        cwd = info.get("cwd") if info.get("cwd") and Path(info["cwd"]).is_dir() else None
+        claude_args = ["--resume", info["session_id"], *kept_flags(args), CONTINUE_PROMPT]
+
+
+def status(out, monitor_path: Path = MONITOR_PATH, home: Path = Path.home()) -> int:
+    t = time.time()
+    accounts = load_monitor(monitor_path, t)
+    source = "Claude Monitor"
+    if accounts is None:
+        accounts, source = fallback_accounts(home), "folder tertaut (data monitor tidak ada/basi)"
+    start = pick_start(accounts, load_limited(LIMITED_PATH), t)
+    out.write(f"Sumber: {source}\n")
+    for a in accounts:
+        star = "★" if start and a.get("id") == start.get("id") else " "
+        room = "-" if a.get("headroom") is None else f"{a['headroom']:.0f}%"
+        out.write(f"{star} {a.get('label', '?'):<12} {a.get('state', '?'):<10} sisa {room}\n")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if argv[:1] == ["hook"]:
+        try:
+            payload = json.load(sys.stdin)
+        except ValueError:
+            return 0
+        try:
+            handle_hook(payload, os.environ, os.kill, parent_of_ps, os.getpid())
+        except Exception:  # hook tidak boleh mengganggu claude
+            pass
+        return 0
+    if argv[:1] == ["status"]:
+        return status(sys.stdout)
+    if argv[:1] == ["setup"]:
+        return setup_main()
+    return run(argv, home=Path.home(), monitor_path=MONITOR_PATH, limited_path=LIMITED_PATH,
+               tmpdir=Path(tempfile.gettempdir()), claude_bin=os.environ.get("CC_CLAUDE_BIN", "claude"),
+               now=time.time, out=sys.stdout)
+
+
+def setup_main() -> int:
+    raise SystemExit("cc setup belum tersedia")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -142,5 +142,115 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.kills, [(30, signal.SIGTERM)])
 
 
+FAKE_CLAUDE = r'''#!/usr/bin/env python3
+import json, os, sys
+log = os.environ["FAKE_LOG"]
+calls = sum(1 for _ in open(log)) if os.path.exists(log) else 0
+with open(log, "a") as f:
+    f.write(json.dumps({"cfg": os.environ.get("CLAUDE_CONFIG_DIR"), "cwd": os.getcwd(),
+                        "argv": sys.argv[1:]}) + "\n")
+if calls == 0 and os.environ.get("FAKE_HANDOFF_CWD"):
+    with open(os.environ["CC_HANDOFF"], "w") as f:
+        json.dump({"session_id": "S1", "cwd": os.environ["FAKE_HANDOFF_CWD"], "error": "rate_limit"}, f)
+sys.exit(int(os.environ.get("FAKE_EXIT", "0")))
+'''
+
+
+class RunTests(unittest.TestCase):
+    NOW = 1_800_000_000.0
+
+    def setUp(self):
+        import io
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.fake = self.tmp / "fake-claude"
+        self.fake.write_text(FAKE_CLAUDE)
+        self.fake.chmod(0o755)
+        self.log = self.tmp / "calls.jsonl"
+        self.proj = self.tmp / "proj"
+        self.proj.mkdir()
+        self.monitor = self.tmp / "accounts.json"
+        self.limited = self.tmp / "sw" / "limited.json"
+        self.out = io.StringIO()
+        self.abati_dir = str(self.tmp / ".claude-abati")
+
+    def write_monitor(self, accounts):
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.NOW))
+        self.monitor.write_text(json.dumps({"updatedAt": stamp, "recommended": None, "accounts": accounts}))
+
+    def two_accounts(self):
+        self.write_monitor([
+            acct(cc.DEFAULT_SERVICE, headroom=10, label="default"),
+            acct(cc.service_for(self.abati_dir), headroom=70, label="abati", config_dir=self.abati_dir),
+        ])
+
+    def run_cc(self, argv, handoff=True, exit_code=0):
+        env = {"FAKE_LOG": str(self.log), "FAKE_EXIT": str(exit_code), "PATH": os.environ["PATH"]}
+        if handoff:
+            env["FAKE_HANDOFF_CWD"] = str(self.proj)
+        code = cc.run(argv, home=self.tmp, monitor_path=self.monitor, limited_path=self.limited,
+                      tmpdir=self.tmp, claude_bin=str(self.fake), now=lambda: self.NOW,
+                      out=self.out, environ=env)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        return code, calls
+
+    def test_run_normal_exit_passes_code(self):
+        self.two_accounts()
+        code, calls = self.run_cc(["--account", "default", "-p", "hi"], handoff=False, exit_code=3)
+        self.assertEqual(code, 3)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["argv"], ["-p", "hi"])
+        self.assertIsNone(calls[0]["cfg"])
+
+    def test_run_starts_on_most_headroom(self):
+        self.two_accounts()
+        _, calls = self.run_cc([], handoff=False)
+        self.assertEqual(calls[0]["cfg"], self.abati_dir)
+
+    def test_run_switches_and_resumes(self):
+        self.two_accounts()
+        code, calls = self.run_cc(["--account", "default"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["cfg"], self.abati_dir)
+        self.assertEqual(calls[1]["argv"], ["--resume", "S1", "lanjutkan"])
+        self.assertIn("cc: limit di default → lanjut di abati", self.out.getvalue())
+
+    def test_run_relaunches_in_handoff_cwd(self):
+        self.two_accounts()
+        _, calls = self.run_cc(["--account", "default"])
+        self.assertEqual(Path(calls[1]["cwd"]).resolve(), self.proj)
+
+    def test_run_keeps_flags(self):
+        self.two_accounts()
+        _, calls = self.run_cc(["--account", "default", "--model", "opus", "--add-dir", "/x", "-p", "hi"])
+        self.assertEqual(calls[1]["argv"], ["--resume", "S1", "--model", "opus", "--add-dir", "/x", "lanjutkan"])
+
+    def test_kept_flags_variants(self):
+        argv = ["--model=opus", "--permission-mode", "plan", "--dangerously-skip-permissions",
+                "-c", "--resume", "X", "prompt"]
+        self.assertEqual(cc.kept_flags(argv),
+                         ["--model=opus", "--permission-mode", "plan", "--dangerously-skip-permissions"])
+
+    def test_run_stops_when_no_account_left(self):
+        self.write_monitor([acct(cc.DEFAULT_SERVICE, headroom=10, label="default")])
+        code, calls = self.run_cc([])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(self.out.getvalue().startswith("cc: semua akun penuh"))
+
+    def test_run_marks_current_limited(self):
+        self.two_accounts()
+        self.run_cc(["--account", "default"])
+        self.assertIn(cc.DEFAULT_SERVICE, cc.load_limited(self.limited))
+
+    def test_run_unknown_account_label(self):
+        self.two_accounts()
+        code = cc.run(["--account", "nope"], home=self.tmp, monitor_path=self.monitor,
+                      limited_path=self.limited, tmpdir=self.tmp, claude_bin=str(self.fake),
+                      now=lambda: self.NOW, out=self.out, environ={})
+        self.assertEqual(code, 2)
+        self.assertIn("nope", self.out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
