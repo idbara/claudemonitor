@@ -30,6 +30,7 @@ struct ClaudeMonitorApp: App {
 /// Isi popover: satu baris per akun Claude Code, ★ = disarankan dipakai berikutnya.
 struct QuotaPopover: View {
     @ObservedObject var store: AccountStore
+    @StateObject private var loginItem = LoginItem()
     @State private var expanded: Set<String> = []
     @State private var copiedID: String?
 
@@ -50,6 +51,16 @@ struct QuotaPopover: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
+            Toggle("Buka saat login", isOn: Binding(
+                get: { loginItem.isEnabled || loginItem.needsApproval },
+                set: { loginItem.setEnabled($0) }
+            ))
+            .toggleStyle(.checkbox)
+            if loginItem.needsApproval {
+                Text("Setujui di Pengaturan Sistem › Item Login")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
             HStack {
                 Button("Refresh") { store.refresh() }
                     .keyboardShortcut("r")
@@ -60,7 +71,10 @@ struct QuotaPopover: View {
         }
         .padding()
         .frame(width: 300)
-        .onAppear { store.refreshIfStale() }
+        .onAppear {
+            store.refreshIfStale()
+            loginItem.reload()
+        }
     }
 
     /// Satu akun: klik baris = salin perintah; chevron = buka meter lengkap.
