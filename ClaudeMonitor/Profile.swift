@@ -6,7 +6,8 @@
 import Foundation
 
 /// Profil akun dari /api/oauth/profile (hanya field yang dipakai).
-struct Profile: Decodable {
+nonisolated struct Profile: Decodable {
+    let uuid: String?
     let fullName: String?
     let email: String?
     let hasClaudeMax: Bool
@@ -15,6 +16,7 @@ struct Profile: Decodable {
         case account
     }
     private enum AccountKeys: String, CodingKey {
+        case uuid
         case fullName = "full_name"
         case email
         case hasClaudeMax = "has_claude_max"
@@ -23,6 +25,7 @@ struct Profile: Decodable {
     init(from decoder: Decoder) throws {
         let root = try decoder.container(keyedBy: RootKeys.self)
         let account = try root.nestedContainer(keyedBy: AccountKeys.self, forKey: .account)
+        uuid = try account.decodeIfPresent(String.self, forKey: .uuid)
         fullName = try account.decodeIfPresent(String.self, forKey: .fullName)
         email = try account.decodeIfPresent(String.self, forKey: .email)
         hasClaudeMax = (try account.decodeIfPresent(Bool.self, forKey: .hasClaudeMax)) ?? false

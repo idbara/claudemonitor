@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation
@@ -52,6 +52,19 @@ check(built.map(\.label) == ["default", "abati"], "discoveryDropsOrphansDefaultF
 check(built.first?.command == "claude", "discoveryDefaultCommand")
 check(built.last?.command == "CLAUDE_CONFIG_DIR=~/.claude-abati claude", "discoverySuffixedCommand")
 check(built.last?.id == "Claude Code-credentials-c6b43821", "discoveryIdIsService")
+
+// Profile: uuid dari respons API; ProfileCache simpan per service.
+let profileJSON = #"{"account":{"uuid":"u-1","email":"a@b.c","full_name":"Bara","has_claude_max":true}}"#
+let profile = try? JSONDecoder().decode(Profile.self, from: Data(profileJSON.utf8))
+check(profile?.uuid == "u-1", "profileDecodesUUID")
+let suite = UserDefaults(suiteName: "ClaudeMonitorChecks")!
+suite.removePersistentDomain(forName: "ClaudeMonitorChecks")
+if let profile {
+    ProfileCache.set(CachedProfile(profile), for: "svc-a", defaults: suite)
+}
+check(ProfileCache.get("svc-a", defaults: suite) == CachedProfile(uuid: "u-1", fullName: "Bara", email: "a@b.c", hasClaudeMax: true), "profileCacheRoundTrip")
+check(ProfileCache.get("svc-b", defaults: suite) == nil, "profileCacheMissing")
+suite.removePersistentDomain(forName: "ClaudeMonitorChecks")
 
 if failures.isEmpty {
     print("ALL CHECKS PASSED")
