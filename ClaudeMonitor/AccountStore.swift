@@ -29,6 +29,8 @@ final class AccountStore: ObservableObject {
     @Published private(set) var accounts: [AccountStatus] = []
     @Published private(set) var recommendedID: String?
     @Published private(set) var lastUpdated: Date?
+    /// true setelah discovery pertama selesai (bedakan "memuat" vs "tidak ada akun").
+    @Published private(set) var hasDiscovered = false
 
     // Endpoint oauth/usage dibatasi ketat (429 retry-after ~4 menit), jadi
     // polling jarang. Data utilisasi berubah lambat — 5 menit sudah cukup.
@@ -83,6 +85,7 @@ final class AccountStore: ObservableObject {
             }
             all = next
             order = found.map(\.id)
+            hasDiscovered = true
             publish()
 
             // Berurutan, bukan paralel — satu akun gagal tidak menghentikan yang lain.
