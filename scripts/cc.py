@@ -17,6 +17,7 @@ import calendar
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -301,8 +302,149 @@ def main(argv: list[str]) -> int:
                now=time.time, out=sys.stdout)
 
 
+# ---------------------------------------------------------------- setup
+
+SHARED_DIRS = ("projects", "skills", "plugins", "rules", "plans", "file-history", "agents", "commands")
+SHARED_FILES = ("settings.json", "CLAUDE.md")
+NO_CHANGE = ("keep", "skip")
+
+
+def plan_links(shared: Path, account: Path) -> list[tuple[str, str]]:
+    """Rencana per entri bersama: keep | relink | merge_dir | backup_file | link |
+    mkdir_shared_link | skip (aturan Troupe ADR-0004)."""
+    plan = []
+    for name, is_dir in [(n, True) for n in SHARED_DIRS] + [(n, False) for n in SHARED_FILES]:
+        target, entry = shared / name, account / name
+        if entry.is_symlink():
+            ok = target.exists() and entry.resolve() == target.resolve()
+            plan.append(("keep" if ok else ("relink" if target.exists() or is_dir else "skip"), name))
+        elif entry.is_dir():
+            plan.append(("merge_dir", name))
+        elif entry.exists():
+            # File milik akun: diganti link bila versi bersama ada (akun default menang).
+            plan.append(("backup_file" if target.exists() else "skip", name))
+        elif target.exists():
+            plan.append(("link", name))
+        else:
+            plan.append(("mkdir_shared_link" if is_dir else "skip", name))
+    return plan
+
+
+def _merge_tree(src: Path, dst: Path) -> None:
+    """Salin isi src ke dst tanpa menimpa file yang sudah ada."""
+    for root, dirs, files in os.walk(src):
+        rel = Path(root).relative_to(src)
+        (dst / rel).mkdir(parents=True, exist_ok=True)
+        for name in files + [d for d in dirs if (Path(root) / d).is_symlink()]:
+            source, dest = Path(root) / name, dst / rel / name
+            if not dest.exists() and not dest.is_symlink():
+                shutil.copy2(source, dest, follow_symlinks=False)
+
+
+def apply_links(plan, shared: Path, account: Path, backup_dir: Path) -> None:
+    for action, name in plan:
+        target, entry = shared / name, account / name
+        if action in NO_CHANGE:
+            continue
+        if action == "relink":
+            entry.unlink()
+        elif action == "mkdir_shared_link":
+            target.mkdir(parents=True, exist_ok=True)
+        elif action in ("merge_dir", "backup_file"):
+            if action == "merge_dir":
+                target.mkdir(parents=True, exist_ok=True)
+                _merge_tree(entry, target)
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(entry), str(backup_dir / name))
+        os.symlink(target, entry)
+
+
+def _hook_present(data: dict, command: str) -> bool:
+    for entry in data.get("hooks", {}).get("StopFailure", []) or []:
+        for hook in entry.get("hooks", []) or []:
+            if hook.get("command") == command:
+                return True
+    return False
+
+
+def install_hook(settings: Path, command: str, backup_dir: Path) -> bool:
+    """Tambahkan hook StopFailure(rate_limit) → `command`; False bila sudah ada."""
+    data = json.loads(settings.read_text()) if settings.exists() else {}
+    if _hook_present(data, command):
+        return False
+    if settings.exists():
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(settings, backup_dir / "settings.json")
+    data.setdefault("hooks", {}).setdefault("StopFailure", []).append(
+        {"matcher": "rate_limit", "hooks": [{"type": "command", "command": command}]})
+    settings.write_text(json.dumps(data, indent=2) + "\n")
+    return True
+
+
+def keychain_has_login(service: str) -> bool:
+    """Ada item Keychain dengan nama ini? Hanya atribut (tanpa -w → token tidak dibaca)."""
+    return subprocess.call(["security", "find-generic-password", "-s", service],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+
+
+def account_dirs(home: Path, has_login) -> list[Path]:
+    """Folder ~/.claude-* yang benar-benar akun Claude Code (punya login di Keychain)."""
+    return [d for d in sorted(Path(home).glob(".claude-*"))
+            if d.is_dir() and not d.is_symlink() and has_login(service_for(str(d)))]
+
+
+def setup(home: Path, monitor_path: Path, confirm, install_to: Path, out, has_login=keychain_has_login,
+          source: Path = Path(__file__)) -> int:
+    home = Path(home)
+    shared = home / ".claude"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_root = home / ".claude-switch" / "backup"
+    plans = {d: plan_links(shared, d) for d in account_dirs(home, has_login)}
+    settings = shared / "settings.json"
+    hook_cmd = f"{install_to} hook"
+    try:
+        hook_needed = not _hook_present(json.loads(settings.read_text()) if settings.exists() else {}, hook_cmd)
+    except ValueError:
+        out.write(f"cc setup: {settings} bukan JSON yang valid — perbaiki dulu.\n")
+        return 1
+    install_needed = not install_to.exists() or install_to.read_bytes() != Path(source).read_bytes()
+
+    changes = {d: [p for p in plan if p[0] not in NO_CHANGE] for d, plan in plans.items()}
+    if not any(changes.values()) and not hook_needed and not install_needed:
+        out.write("cc setup: sudah terpasang, tidak ada perubahan.\n")
+        return 0
+
+    out.write("cc setup akan:\n")
+    for d, items in changes.items():
+        for action, name in items:
+            out.write(f"  {d.name}/{name}: {action}\n")
+    if hook_needed:
+        out.write(f"  {settings}: tambah hook StopFailure(rate_limit) → {hook_cmd}\n")
+    if install_needed:
+        out.write(f"  pasang {install_to}\n")
+    out.write(f"Yang diganti dipindah ke {backup_root}/ (tidak ada yang dihapus).\n"
+              "Tutup semua sesi claude sebelum melanjutkan.\n")
+    if not confirm("Lanjutkan? [y/N] "):
+        out.write("Dibatalkan.\n")
+        return 1
+
+    for d, plan in plans.items():
+        label = d.name[len(".claude-"):] or d.name
+        apply_links(plan, shared, d, backup_root / f"{label}-{stamp}")
+    if hook_needed:
+        install_hook(settings, hook_cmd, backup_root / f"settings-{stamp}")
+    if install_needed:
+        install_to.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, install_to)
+        install_to.chmod(0o755)
+    out.write("cc setup selesai.\n")
+    return 0
+
+
 def setup_main() -> int:
-    raise SystemExit("cc setup belum tersedia")
+    return setup(Path.home(), MONITOR_PATH,
+                 confirm=lambda q: input(q).strip().lower() in ("y", "ya", "yes"),
+                 install_to=Path.home() / ".local" / "bin" / "cc", out=sys.stdout)
 
 
 if __name__ == "__main__":

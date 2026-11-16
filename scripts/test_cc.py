@@ -252,5 +252,95 @@ class RunTests(unittest.TestCase):
         self.assertIn("nope", self.out.getvalue())
 
 
+class SetupTests(unittest.TestCase):
+    def setUp(self):
+        import io
+        self.home = Path(tempfile.mkdtemp()).resolve()
+        self.shared = self.home / ".claude"
+        self.account = self.home / ".claude-abati"
+        self.shared.mkdir()
+        self.account.mkdir()
+        self.out = io.StringIO()
+        self.install_to = self.home / ".local" / "bin" / "cc"
+        self.logins = {cc.service_for(str(self.account))}
+
+    def has_login(self, service):
+        return service in self.logins
+
+    def do_setup(self, answer=True):
+        return cc.setup(self.home, self.home / "no-monitor.json", confirm=lambda _q: answer,
+                        install_to=self.install_to, out=self.out, has_login=self.has_login)
+
+    def test_plan_links_cases(self):
+        for d in ("projects", "skills", "rules"):
+            (self.shared / d).mkdir()
+        (self.shared / "settings.json").write_text("{}")
+        os.symlink(self.shared / "projects", self.account / "projects")      # keep
+        os.symlink(self.home / "elsewhere", self.account / "skills")         # relink
+        (self.account / "plugins").mkdir()                                   # merge_dir
+        (self.account / "settings.json").write_text('{"a": 1}')              # backup_file
+        plan = dict((name, action) for action, name in cc.plan_links(self.shared, self.account))
+        self.assertEqual(plan["projects"], "keep")
+        self.assertEqual(plan["skills"], "relink")
+        self.assertEqual(plan["plugins"], "merge_dir")
+        self.assertEqual(plan["rules"], "link")
+        self.assertEqual(plan["plans"], "mkdir_shared_link")
+        self.assertEqual(plan["settings.json"], "backup_file")
+        self.assertEqual(plan["CLAUDE.md"], "skip")
+
+    def test_apply_merges_without_overwrite(self):
+        (self.shared / "projects" / "p").mkdir(parents=True)
+        (self.shared / "projects" / "p" / "same.jsonl").write_text("shared")
+        (self.account / "projects" / "p").mkdir(parents=True)
+        (self.account / "projects" / "p" / "same.jsonl").write_text("account")
+        (self.account / "projects" / "p" / "only.jsonl").write_text("mine")
+        backup = self.home / "bk"
+        cc.apply_links([("merge_dir", "projects")], self.shared, self.account, backup)
+        self.assertEqual((self.shared / "projects" / "p" / "same.jsonl").read_text(), "shared")
+        self.assertEqual((self.shared / "projects" / "p" / "only.jsonl").read_text(), "mine")
+        self.assertEqual((backup / "projects" / "p" / "same.jsonl").read_text(), "account")
+        self.assertTrue((self.account / "projects").is_symlink())
+        self.assertEqual((self.account / "projects").resolve(), (self.shared / "projects").resolve())
+
+    def test_install_hook_adds_once(self):
+        settings = self.shared / "settings.json"
+        settings.write_text(json.dumps({"model": "opus", "hooks": {"Stop": [{"hooks": []}]}}))
+        self.assertTrue(cc.install_hook(settings, "/x/cc hook", self.home / "bk"))
+        self.assertFalse(cc.install_hook(settings, "/x/cc hook", self.home / "bk"))
+        data = json.loads(settings.read_text())
+        self.assertEqual(data["model"], "opus")
+        self.assertIn("Stop", data["hooks"])
+        self.assertEqual(data["hooks"]["StopFailure"],
+                         [{"matcher": "rate_limit", "hooks": [{"type": "command", "command": "/x/cc hook"}]}])
+        self.assertTrue((self.home / "bk" / "settings.json").exists())
+
+    def test_setup_idempotent(self):
+        (self.shared / "projects").mkdir()
+        (self.shared / "settings.json").write_text("{}")
+        (self.account / "skills").mkdir()
+        self.assertEqual(self.do_setup(), 0)
+        backups = sorted((self.home / ".claude-switch" / "backup").iterdir())
+        self.assertTrue(self.install_to.exists())
+        self.assertTrue(os.access(self.install_to, os.X_OK))
+        self.assertEqual(self.do_setup(), 0)
+        self.assertEqual(sorted((self.home / ".claude-switch" / "backup").iterdir()), backups)
+        self.assertIn("tidak ada perubahan", self.out.getvalue())
+        hooks = json.loads((self.shared / "settings.json").read_text())["hooks"]["StopFailure"]
+        self.assertEqual(len(hooks), 1)
+
+    def test_setup_declined_changes_nothing(self):
+        (self.account / "skills").mkdir()
+        self.assertEqual(self.do_setup(answer=False), 1)
+        self.assertFalse((self.account / "skills").is_symlink())
+        self.assertFalse(self.install_to.exists())
+
+    def test_setup_skips_dirs_without_login(self):
+        other = self.home / ".claude-mem"
+        (other / "skills").mkdir(parents=True)
+        self.do_setup()
+        self.assertFalse((other / "skills").is_symlink())
+        self.assertFalse((other / "projects").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
