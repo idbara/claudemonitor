@@ -243,6 +243,19 @@ class RunTests(unittest.TestCase):
         self.run_cc(["--account", "default"])
         self.assertIn(cc.DEFAULT_SERVICE, cc.load_limited(self.limited))
 
+    def test_run_survives_sigint_to_process_group(self):
+        # Ctrl+C mengirim SIGINT ke seluruh process group (cc + claude);
+        # cc tidak boleh mati/membunuh claude karenanya.
+        self.two_accounts()
+        sigint_fake = self.tmp / "fake-sigint"
+        sigint_fake.write_text(FAKE_CLAUDE.replace(
+            "sys.exit(", "import signal, time; os.kill(os.getppid(), signal.SIGINT); time.sleep(0.3); sys.exit("))
+        sigint_fake.chmod(0o755)
+        self.fake = sigint_fake
+        code, calls = self.run_cc(["--account", "default"], handoff=False, exit_code=5)
+        self.assertEqual(code, 5)
+        self.assertEqual(len(calls), 1)
+
     def test_run_unknown_account_label(self):
         self.two_accounts()
         code = cc.run(["--account", "nope"], home=self.tmp, monitor_path=self.monitor,

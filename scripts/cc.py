@@ -201,6 +201,17 @@ def _restore_terminal(out) -> None:
         subprocess.call(["stty", "sane"], stderr=subprocess.DEVNULL)
 
 
+def _call_claude(cmd: list[str], env: dict, cwd) -> int:
+    """Jalankan claude di foreground. Ctrl+C mengirim SIGINT ke seluruh process
+    group; cc mengabaikannya (lewat handler kosong, bukan SIG_IGN, supaya claude
+    tetap menerima SIGINT normal setelah exec) agar claude tidak ikut terbunuh."""
+    previous = signal.signal(signal.SIGINT, lambda *_: None)
+    try:
+        return subprocess.call(cmd, env=env, cwd=cwd)
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
 def run(argv: list[str], *, home: Path, monitor_path: Path, limited_path: Path, tmpdir: Path,
         claude_bin: str, now, out, environ=None) -> int:
     environ = dict(os.environ if environ is None else environ)
@@ -237,7 +248,7 @@ def run(argv: list[str], *, home: Path, monitor_path: Path, limited_path: Path, 
             env["CLAUDE_CONFIG_DIR"] = current["configDir"]
         else:
             env.pop("CLAUDE_CONFIG_DIR", None)
-        code = subprocess.call([claude_bin, *claude_args], env=env, cwd=cwd)
+        code = _call_claude([claude_bin, *claude_args], env=env, cwd=cwd)
         if not handoff.exists():
             return code
         try:
