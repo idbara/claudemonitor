@@ -57,6 +57,48 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(cc.pick_start(accounts, {}, 1000)["id"], "c")
 
 
+class SoonestResetTests(unittest.TestCase):
+    """Habiskan dulu akun yang reset 5 jamnya paling dekat (sisa ≥ 20%)."""
+    NOW = 1_800_000_000.0
+
+    def a(self, id, five, seven=0.0, reset_in=None, state="ok"):
+        resets = None
+        if reset_in is not None:
+            resets = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.NOW + reset_in * 60))
+        return {"id": id, "label": id, "configDir": None, "state": state, "fiveHour": five,
+                "sevenDay": seven, "headroom": 100 - max(five, seven), "fiveHourResetsAt": resets}
+
+    def pick(self, accounts):
+        return cc.pick_start(accounts, {}, self.NOW)["id"]
+
+    def test_soonest_reset_wins(self):
+        self.assertEqual(self.pick([self.a("a", 40, reset_in=40), self.a("b", 10, reset_in=240)]), "a")
+
+    def test_tolerance_favors_headroom(self):
+        self.assertEqual(self.pick([self.a("a", 60, reset_in=30), self.a("b", 30, reset_in=40)]), "b")
+
+    def test_below_threshold_skipped(self):
+        self.assertEqual(self.pick([self.a("a", 90, reset_in=5), self.a("b", 50, reset_in=240)]), "b")
+
+    def test_below_threshold_fallback_largest_headroom(self):
+        self.assertEqual(self.pick([self.a("a", 90, reset_in=5), self.a("b", 95, reset_in=240)]), "a")
+
+    def test_no_window_last(self):
+        self.assertEqual(self.pick([self.a("a", 5), self.a("b", 70, reset_in=120)]), "b")
+
+    def test_past_reset_counts_as_no_window(self):
+        self.assertEqual(self.pick([self.a("a", 5, reset_in=-10), self.a("b", 70, reset_in=120)]), "b")
+
+    def test_weekly_caps_headroom(self):
+        self.assertEqual(self.pick([self.a("a", 10, 85, reset_in=20), self.a("b", 40, reset_in=200)]), "b")
+
+    def test_full_order_then_expired(self):
+        accounts = [self.a("x", 0, state="expired"), self.a("late", 10, reset_in=240),
+                    self.a("soon", 50, reset_in=30), self.a("low", 90, reset_in=5)]
+        order = [a["id"] for a in cc._ranked(accounts, None, {}, self.NOW)]
+        self.assertEqual(order, ["soon", "late", "low", "x"])
+
+
 class MonitorFileTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

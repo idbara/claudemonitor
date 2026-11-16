@@ -39,6 +39,19 @@ check(AccountMath.recommend([.init(id: "x", fiveHour: 10, sevenDay: 90), .init(i
 check(AccountMath.recommend([.init(id: "x", fiveHour: 100, sevenDay: 20), .init(id: "y", fiveHour: 30, sevenDay: 100)]) == nil, "noRecommendationWhenAllFull")
 check(AccountMath.recommend([.init(id: "x", fiveHour: 10, sevenDay: 10)]) == nil, "noStarForSingleAccount")
 
+// ★ = habiskan dulu akun yang reset 5 jamnya paling dekat (sisa ≥ 20%).
+let n0 = Date(timeIntervalSince1970: 1_800_000_000)
+func snap(_ id: String, _ five: Double, _ seven: Double = 0, resetIn minutes: Double?) -> AccountMath.UsageSnapshot {
+    .init(id: id, fiveHour: five, sevenDay: seven, fiveHourResetsAt: minutes.map { n0.addingTimeInterval($0 * 60) })
+}
+check(AccountMath.recommend([snap("a", 40, resetIn: 40), snap("b", 10, resetIn: 240)], now: n0) == "a", "recommendSoonestResetWins")
+check(AccountMath.recommend([snap("a", 60, resetIn: 30), snap("b", 30, resetIn: 40)], now: n0) == "b", "recommendToleranceFavorsHeadroom")
+check(AccountMath.recommend([snap("a", 90, resetIn: 5), snap("b", 50, resetIn: 240)], now: n0) == "b", "recommendBelowThresholdSkipped")
+check(AccountMath.recommend([snap("a", 90, resetIn: 5), snap("b", 95, resetIn: 240)], now: n0) == "a", "recommendBelowThresholdFallbackLargestHeadroom")
+check(AccountMath.recommend([snap("a", 5, resetIn: nil), snap("b", 70, resetIn: 120)], now: n0) == "b", "recommendNoWindowLast")
+check(AccountMath.recommend([snap("a", 5, resetIn: -10), snap("b", 70, resetIn: 120)], now: n0) == "b", "recommendPastResetCountsAsNoWindow")
+check(AccountMath.recommend([snap("a", 10, 85, resetIn: 20), snap("b", 40, resetIn: 200)], now: n0) == "b", "recommendWeeklyCapsHeadroom")
+
 check(AccountMath.menuLabel(accountCount: 1, recommendedLabel: nil, fiveHour: 29.4) == "5h 29%", "menuLabelSingleAccount")
 check(AccountMath.menuLabel(accountCount: 2, recommendedLabel: "abati", fiveHour: 12.0) == "★abati 12%", "menuLabelStar")
 check(AccountMath.menuLabel(accountCount: 2, recommendedLabel: nil, fiveHour: nil) == "", "menuLabelNoData")

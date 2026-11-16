@@ -9,7 +9,7 @@ Data diambil langsung dari Anthropic sebagai **persentase pemakaian** (utilizati
 ## Fitur
 
 - **Multi-akun otomatis** — semua akun Claude Code di Mac ini terdeteksi sendiri, termasuk yang dijalankan dengan `CLAUDE_CONFIG_DIR=~/.claude-xxx` (lihat **Multi-akun**).
-- **Rekomendasi ★** — akun dengan sisa limit terbanyak ditandai ★; klik barisnya untuk menyalin perintah `CLAUDE_CONFIG_DIR=… claude`.
+- **Rekomendasi ★** — akun yang sisa limitnya paling cepat hangus (sisa ≥ 20% dan reset 5 jam paling dekat) ditandai ★; klik barisnya untuk menyalin perintah `CLAUDE_CONFIG_DIR=… claude`.
 - **Label menu bar** ringkas: `5h 38%` untuk satu akun, atau `★abati 12%` (akun yang disarankan) bila ada beberapa akun.
 - **Berjalan di background** — tanpa ikon Dock, dengan opsi **Buka saat login**.
 - **Popover** berisi satu baris per akun (bar 5 jam + 7 hari); chevron membuka meter lengkap:
@@ -79,7 +79,7 @@ Claude Code menyimpan token akun default di item Keychain `Claude Code-credentia
 
 Claude Monitor membaca daftar item tersebut (tanpa membaca tokennya), lalu mencocokkannya dengan folder `~/.claude*` di home Anda — mis. `~/.claude-abati` → akun **abati**. Item yang foldernya sudah tidak ada diabaikan, dan item dengan akun yang sama (uuid profil sama) digabung menjadi satu baris.
 
-- **★ Rekomendasi** = akun dengan sisa limit terbanyak, dihitung `100 − max(5 jam, 7 hari)`. Hanya muncul bila ≥ 2 akun punya data; tidak ada ★ bila semua sudah penuh.
+- **★ Rekomendasi** = habiskan dulu limit yang paling cepat hangus. Sisa dihitung `100 − max(5 jam, 7 hari)`; di antara akun dengan sisa **≥ 20%**, yang **reset 5 jamnya paling dekat** menang (reset berselisih < 15 menit → sisa terbesar). Akun yang window 5 jamnya belum berjalan ditaruh paling belakang karena sisanya tidak akan hangus. Bila tak ada akun dengan sisa ≥ 20%, dipilih sisa terbesar. Hanya muncul bila ≥ 2 akun punya data; tidak ada ★ bila semua sudah penuh.
 - **⚠ token kedaluwarsa** = token akun itu sudah lewat masa berlakunya karena lama tidak dipakai. Jalankan `claude` di akun itu (salin perintahnya dari baris) — Claude Code akan menyegarkan tokennya, dan monitor ikut terbarui. Monitor **tidak pernah** memakai refresh token sendiri, supaya login Claude Code tidak rusak.
 - Hanya folder langsung di `$HOME` yang dipindai.
 
@@ -105,7 +105,7 @@ Tutup semua sesi claude dulu. Setup menampilkan rencananya lalu meminta konfirma
 **Pakai:**
 
 ```bash
-cc                      # seperti `claude`, mulai di akun dengan sisa limit terbanyak (★)
+cc                      # seperti `claude`, mulai di akun ★ (sisa ≥ 20% yang reset paling dekat)
 cc --account abati      # mulai di akun tertentu
 cc --model opus         # argumen lain diteruskan ke claude
 cc status               # daftar akun, status, dan sisa limit
@@ -122,7 +122,7 @@ cc account list         # daftar akun (sama dengan cc status)
 
 Saat sebuah giliran gagal karena limit, hook menulis `session_id` lalu menghentikan claude; `cc` mencetak `cc: limit di <a> → lanjut di <b>` dan menjalankan `claude --resume <id> "lanjutkan"` dengan `CLAUDE_CONFIG_DIR` akun berikutnya, di folder yang sama. Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa.
 
-- Akun berikutnya dipilih dari `accounts.json` yang ditulis Claude Monitor (`~/Library/Application Support/ClaudeMonitor/accounts.json`): akun `ok` dengan sisa terbanyak, lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tidak dipakai). Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya. Bila data monitor tidak ada/lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.
+- Akun berikutnya dipilih dari `accounts.json` yang ditulis Claude Monitor (`~/Library/Application Support/ClaudeMonitor/accounts.json`): akun `ok` dengan aturan yang sama seperti ★ (sisa ≥ 20% yang reset 5 jamnya paling dekat), lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tidak dipakai). Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya. Bila data monitor tidak ada/lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.
 - Bila semua akun penuh: `cc: semua akun penuh — reset paling cepat HH:MM`, lalu keluar.
 - Sesi yang dijalankan dengan `claude` biasa tidak terpengaruh — hook tidak melakukan apa-apa di luar `cc`.
 - Giliran pertama setelah pindah akun lebih mahal karena prompt cache dibangun ulang.

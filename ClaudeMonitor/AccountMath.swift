@@ -85,21 +85,39 @@ nonisolated enum AccountMath {
         let id: String
         let fiveHour: Double?
         let sevenDay: Double?
+        var fiveHourResetsAt: Date? = nil
     }
 
-    /// Akun dengan sisa limit terbanyak: 100 − max(5 jam, 7 hari).
+    /// Sisa minimal agar akun layak "dihabiskan dulu".
+    static let minHeadroom: Double = 20
+    /// Reset dalam selisih ini dianggap sama dekatnya → sisa terbesar menang.
+    static let resetTolerance: TimeInterval = 15 * 60
+
+    /// ★ = habiskan dulu sisa limit yang paling cepat hangus:
+    /// di antara akun dengan sisa (100 − max(5 jam, 7 hari)) ≥ 20%, pilih yang
+    /// reset 5 jamnya paling dekat (selisih < 15 menit → sisa terbesar). Akun
+    /// tanpa window berjalan ada di belakang. Tak ada yang ≥ 20% → sisa terbesar.
     /// nil bila < 2 akun atau semua sudah penuh.
-    static func recommend(_ snaps: [UsageSnapshot]) -> String? {
+    static func recommend(_ snaps: [UsageSnapshot], now: Date = Date()) -> String? {
         guard snaps.count >= 2 else { return nil }
         func headroom(_ s: UsageSnapshot) -> Double { 100 - max(s.fiveHour ?? 0, s.sevenDay ?? 0) }
-        let best = snaps.min { a, b in
+        func reset(_ s: UsageSnapshot) -> Date {
+            guard let r = s.fiveHourResetsAt, r > now else { return .distantFuture }
+            return r
+        }
+        func betterHeadroom(_ a: UsageSnapshot, _ b: UsageSnapshot) -> Bool {
             let ha = headroom(a), hb = headroom(b)
             if ha != hb { return ha > hb }
             let fa = a.fiveHour ?? 0, fb = b.fiveHour ?? 0
             if fa != fb { return fa < fb }
             return a.id < b.id
         }
-        guard let best, headroom(best) > 0 else { return nil }
+        let eligible = snaps.filter { headroom($0) >= minHeadroom }
+        if let soonest = eligible.map(reset).min() {
+            let near = eligible.filter { reset($0).timeIntervalSince(soonest) < resetTolerance }
+            return near.min(by: betterHeadroom)?.id
+        }
+        guard let best = snaps.min(by: betterHeadroom), headroom(best) > 0 else { return nil }
         return best.id
     }
 

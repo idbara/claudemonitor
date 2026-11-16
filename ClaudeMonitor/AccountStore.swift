@@ -161,8 +161,8 @@ final class AccountStore: ObservableObject {
                              to: AccountsExport.defaultURL)
     }
 
-    /// Gabung duplikat (uuid sama), pilih ★ dari akun yang datanya segar, urutkan ★ → default → label.
-    nonisolated static func arrange(_ statuses: [AccountStatus]) -> (visible: [AccountStatus], recommendedID: String?) {
+    /// Gabung duplikat (uuid sama), pilih ★ (sisa ≥ 20% yang reset paling dekat) dari akun yang datanya segar, urutkan ★ → default → label.
+    nonisolated static func arrange(_ statuses: [AccountStatus], now: Date = Date()) -> (visible: [AccountStatus], recommendedID: String?) {
         let keep = AccountMath.dedupe(statuses.map {
             AccountMath.DedupItem(id: $0.id, uuid: $0.profile?.uuid, expiresAt: $0.expiresAt)
         })
@@ -170,9 +170,10 @@ final class AccountStore: ObservableObject {
         let snaps = visible.compactMap { s -> AccountMath.UsageSnapshot? in
             guard s.state == .ok, let q = s.quota else { return nil }
             return AccountMath.UsageSnapshot(id: s.id, fiveHour: q.fiveHour?.utilization,
-                                             sevenDay: q.sevenDay?.utilization)
+                                             sevenDay: q.sevenDay?.utilization,
+                                             fiveHourResetsAt: q.fiveHour?.resetsAt)
         }
-        let rec = AccountMath.recommend(snaps)
+        let rec = AccountMath.recommend(snaps, now: now)
         let sorted = visible.sorted { a, b in
             if (a.id == rec) != (b.id == rec) { return a.id == rec }
             let ad = a.account.service == AccountMath.defaultService

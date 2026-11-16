@@ -102,13 +102,44 @@ def mark_limited(path: Path, account_id: str, until: float, now: float) -> None:
     path.write_text(json.dumps(data))
 
 
+MIN_HEADROOM = 20.0          # sisa minimal agar akun layak "dihabiskan dulu"
+RESET_TOLERANCE = 15 * 60    # reset berselisih < 15 menit dianggap sama dekat
+
+
+def _order_by_soonest_reset(accounts: list[dict], now: float) -> list[dict]:
+    """Urutan akun `ok` (aturan sama dengan ★ di Claude Monitor): akun dengan sisa
+    ≥ 20% yang reset 5 jamnya paling dekat dulu (selisih < 15 menit → sisa
+    terbesar); akun tanpa window berjalan di belakang; sisanya (< 20%) menurut
+    sisa terbesar."""
+    def headroom(a):
+        return a.get("headroom") or 0
+
+    def reset(a):
+        r = parse_iso(a.get("fiveHourResetsAt"))
+        return r if r is not None and r > now else float("inf")
+
+    def by_headroom(a):
+        return (-headroom(a), a.get("fiveHour") or 0, a.get("id") or "")
+
+    pool = [a for a in accounts if headroom(a) >= MIN_HEADROOM]
+    rest = sorted((a for a in accounts if headroom(a) < MIN_HEADROOM), key=by_headroom)
+    ordered = []
+    while pool:
+        soonest = min(reset(a) for a in pool)
+        near = [a for a in pool if reset(a) - soonest < RESET_TOLERANCE or reset(a) == soonest]
+        best = min(near, key=by_headroom)
+        ordered.append(best)
+        pool.remove(best)
+    return ordered + rest
+
+
 def _ranked(accounts: list[dict], exclude: str | None, limited: dict[str, float], now: float) -> list[dict]:
     usable = [a for a in accounts
               if a.get("id") != exclude
               and limited.get(a.get("id"), 0) <= now
               and a.get("state") != "needsLogin"]
-    ok = [a for a in usable if a.get("state") == "ok" and (a.get("headroom") or 0) > 0]
-    ok.sort(key=lambda a: (-(a.get("headroom") or 0), a.get("fiveHour") or 0))
+    ok = _order_by_soonest_reset(
+        [a for a in usable if a.get("state") == "ok" and (a.get("headroom") or 0) > 0], now)
     # Token akun yang lama menganggur biasanya kedaluwarsa saja; menjalankan
     # claude di sana menyegarkannya. Pemakaiannya tak diketahui → setelah `ok`.
     unknown = [a for a in usable if a.get("state") in ("expired", "unknown")]
