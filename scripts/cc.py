@@ -17,6 +17,8 @@ import calendar
 import hashlib
 import json
 import os
+import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -113,3 +115,51 @@ def pick_start(accounts: list[dict], limited: dict[str, float], now: float) -> d
     """Akun untuk memulai sesi baru (sisa limit terbanyak)."""
     ranked = _ranked(accounts, None, limited, now)
     return ranked[0] if ranked else None
+
+
+# ---------------------------------------------------------------- hook
+
+def find_claude_pid(start_pid: int, wrapper_pid: int, parent_of) -> int | None:
+    """Naik dari proses hook sampai proses yang induknya `cc` (= claude)."""
+    pid = start_pid
+    for _ in range(32):
+        if pid is None or pid <= 1:
+            return None
+        parent = parent_of(pid)
+        if parent == wrapper_pid:
+            return pid
+        pid = parent
+    return None
+
+
+def parent_of_ps(pid: int) -> int | None:
+    try:
+        out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)],
+                             capture_output=True, text=True, check=False).stdout.strip()
+        return int(out) if out else None
+    except (OSError, ValueError):
+        return None
+
+
+def handle_hook(payload: dict, env, kill, parent_of, self_pid: int) -> bool:
+    """StopFailure: bila sesi dijalankan lewat `cc` dan errornya rate_limit,
+    tulis handoff lalu hentikan claude. Di luar `cc` tidak melakukan apa-apa."""
+    handoff = env.get("CC_HANDOFF")
+    wrapper = env.get("CC_WRAPPER_PID")
+    if not handoff or not wrapper or payload.get("error") != "rate_limit":
+        return False
+    try:
+        wrapper_pid = int(wrapper)
+    except ValueError:
+        return False
+    Path(handoff).write_text(json.dumps({
+        "session_id": payload.get("session_id"),
+        "cwd": payload.get("cwd"),
+        "error": payload.get("error"),
+        "error_details": payload.get("error_details"),
+        "at": time.time(),
+    }))
+    claude_pid = find_claude_pid(self_pid, wrapper_pid, parent_of)
+    if claude_pid is not None:
+        kill(claude_pid, signal.SIGTERM)
+    return True

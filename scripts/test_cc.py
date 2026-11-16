@@ -101,5 +101,46 @@ class MonitorFileTests(unittest.TestCase):
         self.assertEqual(cc.load_limited(self.tmp / "missing.json"), {})
 
 
+class HookTests(unittest.TestCase):
+    TABLE = {50: 40, 40: 30, 30: 10, 10: 1}
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.kills = []
+
+    def kill(self, pid, sig):
+        self.kills.append((pid, sig))
+
+    def test_find_claude_pid_walks_to_child_of_wrapper(self):
+        self.assertEqual(cc.find_claude_pid(50, 10, self.TABLE.get), 30)
+
+    def test_find_claude_pid_none_when_not_descendant(self):
+        self.assertIsNone(cc.find_claude_pid(50, 999, self.TABLE.get))
+
+    def payload(self, error="rate_limit"):
+        return {"hook_event_name": "StopFailure", "error": error, "session_id": "S1",
+                "cwd": "/tmp/proj", "error_details": "5-hour limit reached"}
+
+    def test_hook_noop_without_wrapper_env(self):
+        self.assertFalse(cc.handle_hook(self.payload(), {}, self.kill, self.TABLE.get, 50))
+        self.assertEqual(self.kills, [])
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    def test_hook_ignores_other_errors(self):
+        env = {"CC_HANDOFF": str(self.tmp / "h.json"), "CC_WRAPPER_PID": "10"}
+        self.assertFalse(cc.handle_hook(self.payload("overloaded"), env, self.kill, self.TABLE.get, 50))
+        self.assertEqual(self.kills, [])
+        self.assertFalse((self.tmp / "h.json").exists())
+
+    def test_hook_writes_handoff_and_terms_claude(self):
+        import signal
+        env = {"CC_HANDOFF": str(self.tmp / "h.json"), "CC_WRAPPER_PID": "10"}
+        self.assertTrue(cc.handle_hook(self.payload(), env, self.kill, self.TABLE.get, 50))
+        handoff = json.loads((self.tmp / "h.json").read_text())
+        self.assertEqual(handoff["session_id"], "S1")
+        self.assertEqual(handoff["cwd"], "/tmp/proj")
+        self.assertEqual(self.kills, [(30, signal.SIGTERM)])
+
+
 if __name__ == "__main__":
     unittest.main()
