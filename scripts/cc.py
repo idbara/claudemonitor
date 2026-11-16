@@ -6,6 +6,8 @@ Pemakaian:
   cc --account <label> [arg…]   mulai di akun tertentu
   cc status                     tampilkan akun dari Claude Monitor
   cc setup                      sambungkan akun (symlink ke ~/.claude) + pasang hook
+  cc account new <nama>         buat akun baru ~/.claude-<nama> (tertaut) lalu login
+  cc account list               sama dengan `cc status`
   cc hook                       dipanggil oleh hook StopFailure (internal)
 
 Tidak pernah membaca/menulis token OAuth atau item Keychain Claude Code.
@@ -17,6 +19,7 @@ import calendar
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -308,6 +311,8 @@ def main(argv: list[str]) -> int:
         return status(sys.stdout)
     if argv[:1] == ["setup"]:
         return setup_main()
+    if argv[:1] == ["account"]:
+        return account_main(argv[1:])
     return run(argv, home=Path.home(), monitor_path=MONITOR_PATH, limited_path=LIMITED_PATH,
                tmpdir=Path(tempfile.gettempdir()), claude_bin=os.environ.get("CC_CLAUDE_BIN", "claude"),
                now=time.time, out=sys.stdout)
@@ -450,6 +455,56 @@ def setup(home: Path, monitor_path: Path, confirm, install_to: Path, out, has_lo
         install_to.chmod(0o755)
     out.write("cc setup selesai.\n")
     return 0
+
+
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def claude_auth_login(config_dir: str) -> int:
+    """Login Claude (langganan) untuk config dir ini — membuka browser."""
+    env = dict(os.environ, CLAUDE_CONFIG_DIR=config_dir)
+    return subprocess.call([os.environ.get("CC_CLAUDE_BIN", "claude"), "auth", "login", "--claudeai"], env=env)
+
+
+def account_new(label: str, *, home: Path, login, has_login, install_to: Path, out) -> int:
+    """Buat ~/.claude-<label>, tautkan ke ~/.claude seperti `cc setup`, lalu login."""
+    if not LABEL_RE.match(label or "") or label == "default":
+        out.write("cc: nama akun hanya boleh huruf, angka, '.', '_' atau '-' "
+                  "(diawali huruf/angka, bukan 'default').\n")
+        return 2
+    home = Path(home)
+    shared = home / ".claude"
+    account = home / f".claude-{label}"
+    if account.exists() and has_login(service_for(str(account))):
+        out.write(f"cc: akun '{label}' sudah ada ({account}). Lihat `cc account list`.\n")
+        return 1
+    account.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_root = home / ".claude-switch" / "backup"
+    apply_links(plan_links(shared, account), shared, account, backup_root / f"{label}-{stamp}")
+    settings = shared / "settings.json"
+    if settings.exists():
+        install_hook(settings, f"{install_to} hook", backup_root / f"settings-{stamp}")
+    out.write(f"cc: {account} dibuat dan ditautkan ke {shared}. Membuka login…\n")
+    out.flush()
+    login(str(account))
+    if not has_login(service_for(str(account))):
+        out.write(f"cc: login belum selesai. Ulangi dengan `cc account new {label}`.\n")
+        return 1
+    out.write(f"cc: akun '{label}' siap. Mulai dengan `cc --account {label}`; "
+              "Claude Monitor menampilkannya setelah refresh berikutnya.\n")
+    return 0
+
+
+def account_main(argv: list[str]) -> int:
+    if argv[:1] == ["list"] or not argv:
+        return status(sys.stdout)
+    if argv[0] == "new" and len(argv) == 2:
+        return account_new(argv[1], home=Path.home(), login=claude_auth_login,
+                           has_login=keychain_has_login,
+                           install_to=Path.home() / ".local" / "bin" / "cc", out=sys.stdout)
+    sys.stdout.write("Pemakaian: cc account new <nama> | cc account list\n")
+    return 2
 
 
 def setup_main() -> int:

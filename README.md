@@ -111,6 +111,15 @@ cc --model opus         # argumen lain diteruskan ke claude
 cc status               # daftar akun, status, dan sisa limit
 ```
 
+**Menambah akun:**
+
+```bash
+cc account new kerja    # buat ~/.claude-kerja, tautkan ke ~/.claude, lalu login (browser)
+cc account list         # daftar akun (sama dengan cc status)
+```
+
+`cc account new` membuat folder `~/.claude-<nama>`, menautkan folder/file bersama ke `~/.claude` (konfigurasi sama dengan akun default), memastikan hook terpasang, lalu menjalankan `claude auth login --claudeai` untuk folder itu. Setelah login berhasil (dicek lewat nama item Keychain), akun langsung bisa dipakai dengan `cc --account kerja` dan muncul di Claude Monitor setelah refresh berikutnya (klik **Always Allow** pada prompt Keychain). Bila login dibatalkan, jalankan perintah yang sama lagi — folder yang sudah ada dipakai ulang.
+
 Saat sebuah giliran gagal karena limit, hook menulis `session_id` lalu menghentikan claude; `cc` mencetak `cc: limit di <a> → lanjut di <b>` dan menjalankan `claude --resume <id> "lanjutkan"` dengan `CLAUDE_CONFIG_DIR` akun berikutnya, di folder yang sama. Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa.
 
 - Akun berikutnya dipilih dari `accounts.json` yang ditulis Claude Monitor (`~/Library/Application Support/ClaudeMonitor/accounts.json`): akun `ok` dengan sisa terbanyak, lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tidak dipakai). Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya. Bila data monitor tidak ada/lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.

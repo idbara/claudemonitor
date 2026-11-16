@@ -355,5 +355,72 @@ class SetupTests(unittest.TestCase):
         self.assertFalse((other / "projects").exists())
 
 
+class AccountNewTests(unittest.TestCase):
+    def setUp(self):
+        import io
+        self.home = Path(tempfile.mkdtemp()).resolve()
+        self.shared = self.home / ".claude"
+        (self.shared / "projects").mkdir(parents=True)
+        (self.shared / "settings.json").write_text("{}")
+        self.out = io.StringIO()
+        self.logins = set()
+        self.login_calls = []
+        self.install_to = self.home / ".local" / "bin" / "cc"
+
+    def has_login(self, service):
+        return service in self.logins
+
+    def login_ok(self, config_dir):
+        self.login_calls.append(config_dir)
+        self.logins.add(cc.service_for(config_dir))
+        return 0
+
+    def login_fail(self, config_dir):
+        self.login_calls.append(config_dir)
+        return 1
+
+    def new(self, label, login=None):
+        return cc.account_new(label, home=self.home, login=login or self.login_ok,
+                              has_login=self.has_login, install_to=self.install_to, out=self.out)
+
+    def test_account_new_creates_links_and_logs_in(self):
+        self.assertEqual(self.new("kerja"), 0)
+        account = self.home / ".claude-kerja"
+        self.assertEqual((account / "projects").resolve(), (self.shared / "projects").resolve())
+        self.assertTrue((account / "settings.json").is_symlink())
+        self.assertTrue((account / "skills").is_symlink())
+        self.assertEqual(self.login_calls, [str(account)])
+        self.assertIn("cc --account kerja", self.out.getvalue())
+
+    def test_account_new_installs_hook_if_missing(self):
+        self.new("kerja")
+        hooks = json.loads((self.shared / "settings.json").read_text())["hooks"]["StopFailure"]
+        self.assertEqual(hooks[0]["matcher"], "rate_limit")
+        self.assertEqual(hooks[0]["hooks"][0]["command"], f"{self.install_to} hook")
+
+    def test_account_new_rejects_bad_label(self):
+        for label in ("", "default", "../x", "a b", "-x"):
+            self.assertEqual(self.new(label), 2, label)
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()), [".claude"])
+        self.assertEqual(self.login_calls, [])
+
+    def test_account_new_existing_logged_in_refuses(self):
+        (self.home / ".claude-kerja").mkdir()
+        self.logins.add(cc.service_for(str(self.home / ".claude-kerja")))
+        self.assertEqual(self.new("kerja"), 1)
+        self.assertEqual(self.login_calls, [])
+        self.assertIn("sudah ada", self.out.getvalue())
+
+    def test_account_new_existing_without_login_is_reused(self):
+        (self.home / ".claude-kerja" / "skills").mkdir(parents=True)
+        self.assertEqual(self.new("kerja"), 0)
+        self.assertTrue((self.home / ".claude-kerja" / "skills").is_symlink())
+
+    def test_account_new_login_failed_reports(self):
+        self.assertEqual(self.new("kerja", login=self.login_fail), 1)
+        self.assertTrue((self.home / ".claude-kerja").is_dir())
+        self.assertIn("cc account new kerja", self.out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
