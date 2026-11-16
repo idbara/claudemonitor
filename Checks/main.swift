@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation
@@ -42,6 +42,16 @@ check(AccountMath.recommend([.init(id: "x", fiveHour: 10, sevenDay: 10)]) == nil
 check(AccountMath.menuLabel(accountCount: 1, recommendedLabel: nil, fiveHour: 29.4) == "5h 29%", "menuLabelSingleAccount")
 check(AccountMath.menuLabel(accountCount: 2, recommendedLabel: "abati", fiveHour: 12.0) == "★abati 12%", "menuLabelStar")
 check(AccountMath.menuLabel(accountCount: 2, recommendedLabel: nil, fiveHour: nil) == "", "menuLabelNoData")
+
+// AccountDiscovery.build: cocokkan item Keychain ke folder, buang yatim.
+let built = AccountDiscovery.build(
+    services: ["Claude Code-credentials-c6b43821", "Claude Code-credentials", "Claude Code-credentials-deadbeef"],
+    dirNames: [".claude", ".claude-abati", ".claude-mem"],
+    home: "/Users/bara")
+check(built.map(\.label) == ["default", "abati"], "discoveryDropsOrphansDefaultFirst")
+check(built.first?.command == "claude", "discoveryDefaultCommand")
+check(built.last?.command == "CLAUDE_CONFIG_DIR=~/.claude-abati claude", "discoverySuffixedCommand")
+check(built.last?.id == "Claude Code-credentials-c6b43821", "discoveryIdIsService")
 
 if failures.isEmpty {
     print("ALL CHECKS PASSED")
