@@ -83,6 +83,42 @@ Claude Monitor membaca daftar item tersebut (tanpa membaca tokennya), lalu menco
 - **⚠ token kedaluwarsa** = token akun itu sudah lewat masa berlakunya karena lama tidak dipakai. Jalankan `claude` di akun itu (salin perintahnya dari baris) — Claude Code akan menyegarkan tokennya, dan monitor ikut terbarui. Monitor **tidak pernah** memakai refresh token sendiri, supaya login Claude Code tidak rusak.
 - Hanya folder langsung di `$HOME` yang dipindai.
 
+### Ganti akun otomatis (`cc`)
+
+`scripts/cc.py` adalah pembungkus `claude` yang **pindah ke akun lain secara otomatis saat limit habis** dan **melanjutkan percakapan yang sama** (terinspirasi Troupe, ADR-0004).
+
+**Pasang sekali:**
+
+```bash
+python3 scripts/cc.py setup
+```
+
+Tutup semua sesi claude dulu. Setup menampilkan rencananya lalu meminta konfirmasi `y/N`:
+
+- Di tiap folder akun (`~/.claude-xxx` yang punya login di Keychain), entri `projects`, `skills`, `plugins`, `rules`, `plans`, `file-history`, `agents`, `commands`, `settings.json`, `CLAUDE.md` dijadikan **symlink ke `~/.claude`** — riwayat sesi, skill, plugin, dan pengaturan jadi sama di semua akun. Login dan `.claude.json` tetap per akun.
+- Isi folder akun yang lama digabung ke `~/.claude` **tanpa menimpa** (versi `~/.claude` menang), lalu yang asli dipindah ke `~/.claude-switch/backup/<akun>-<waktu>/`. Tidak ada yang dihapus.
+- Menambahkan hook `StopFailure` (matcher `rate_limit`) → `~/.local/bin/cc hook` ke `~/.claude/settings.json` (dicadangkan dulu), dan memasang `cc` ke `~/.local/bin/cc`.
+- Aman dijalankan ulang (idempoten). Jalankan ulang setelah menambah akun baru atau memperbarui `cc.py`.
+
+> Karena `settings.json` ikut dibagi, pengaturan seperti `model` di `~/.claude/settings.json` kini berlaku untuk semua akun.
+
+**Pakai:**
+
+```bash
+cc                      # seperti `claude`, mulai di akun dengan sisa limit terbanyak (★)
+cc --account abati      # mulai di akun tertentu
+cc --model opus         # argumen lain diteruskan ke claude
+cc status               # daftar akun, status, dan sisa limit
+```
+
+Saat sebuah giliran gagal karena limit, hook menulis `session_id` lalu menghentikan claude; `cc` mencetak `cc: limit di <a> → lanjut di <b>` dan menjalankan `claude --resume <id> "lanjutkan"` dengan `CLAUDE_CONFIG_DIR` akun berikutnya, di folder yang sama. Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa.
+
+- Akun berikutnya dipilih dari `accounts.json` yang ditulis Claude Monitor (`~/Library/Application Support/ClaudeMonitor/accounts.json`): akun `ok` dengan sisa terbanyak, lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tidak dipakai). Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya. Bila data monitor tidak ada/lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.
+- Bila semua akun penuh: `cc: semua akun penuh — reset paling cepat HH:MM`, lalu keluar.
+- Sesi yang dijalankan dengan `claude` biasa tidak terpengaruh — hook tidak melakukan apa-apa di luar `cc`.
+- Giliran pertama setelah pindah akun lebih mahal karena prompt cache dibangun ulang.
+- `cc` maupun hook tidak pernah membaca token atau item Keychain (setup hanya mengecek *nama* item Keychain tanpa membaca isinya).
+
 ### Membaca angkanya
 
 - Angka persen = **utilization** dari Anthropic (0–100%). Makin tinggi = makin dekat ke batas.
@@ -194,6 +230,7 @@ Refresh token OAuth mandiri, grafik historis, tampilan `extra_usage`/kredit, dan
 ClaudeMonitor/                 sumber Swift (lihat "Cara Kerja")
 ClaudeMonitor/Assets.xcassets  AppIcon + ikon menu bar (ClaudeLogo)
 Checks/main.swift              program cek logika murni (dikompilasi dengan swiftc)
+scripts/cc.py                  pembungkus `claude` dengan ganti akun otomatis (+ test_cc.py)
 docs/superpowers/specs/        dokumen desain
 docs/superpowers/plans/        rencana implementasi
 CLAUDE.md                      panduan untuk Claude Code di repo ini
