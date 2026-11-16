@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation
@@ -65,6 +65,35 @@ if let profile {
 check(ProfileCache.get("svc-a", defaults: suite) == CachedProfile(uuid: "u-1", fullName: "Bara", email: "a@b.c", hasClaudeMax: true), "profileCacheRoundTrip")
 check(ProfileCache.get("svc-b", defaults: suite) == nil, "profileCacheMissing")
 suite.removePersistentDomain(forName: "ClaudeMonitorChecks")
+
+// AccountStore.arrange: gabung duplikat, ★ hanya dari akun .ok, ★ di atas.
+func usage(_ five: Double, _ seven: Double) -> QuotaUsage {
+    let json = #"{"five_hour":{"utilization":\#(five),"resets_at":null},"seven_day":{"utilization":\#(seven),"resets_at":null}}"#
+    return try! JSONDecoder().decode(QuotaUsage.self, from: Data(json.utf8))
+}
+func status(_ service: String, _ label: String, uuid: String?, exp: Double?, state: AccountState, quota: QuotaUsage?) -> AccountStatus {
+    AccountStatus(account: Account(id: service, service: service, label: label, command: "claude"),
+                  profile: uuid.map { CachedProfile(uuid: $0, fullName: nil, email: nil, hasClaudeMax: false) },
+                  quota: quota, state: state, expiresAt: exp.map { Date(timeIntervalSince1970: $0) })
+}
+let arranged = AccountStore.arrange([
+    status(AccountMath.defaultService, "default", uuid: "u1", exp: 2000, state: .ok, quota: usage(78, 65)),
+    status("svc-abati", "abati", uuid: "u2", exp: 2000, state: .ok, quota: usage(12, 40)),
+    status("svc-old", "old", uuid: "u2", exp: 1000, state: .expired, quota: nil),
+    status("svc-zed", "zed", uuid: "u3", exp: 500, state: .expired, quota: usage(0, 0)),
+])
+check(arranged.visible.map(\.id) == ["svc-abati", AccountMath.defaultService, "svc-zed"], "arrangeDedupesAndSortsStarFirst")
+check(arranged.recommendedID == "svc-abati", "arrangeRecommendsOnlyOkAccounts")
+check(AccountStore.menuLabel(visible: arranged.visible, recommendedID: arranged.recommendedID) == "★abati 12%", "storeMenuLabelStar")
+let single = AccountStore.arrange([status(AccountMath.defaultService, "default", uuid: "u1", exp: 2000, state: .ok, quota: usage(29.4, 10))])
+check(single.recommendedID == nil, "arrangeSingleNoStar")
+check(AccountStore.menuLabel(visible: single.visible, recommendedID: single.recommendedID) == "5h 29%", "storeMenuLabelSingle")
+let full = AccountStore.arrange([
+    status(AccountMath.defaultService, "default", uuid: "u1", exp: 2000, state: .ok, quota: usage(100, 50)),
+    status("svc-abati", "abati", uuid: "u2", exp: 2000, state: .ok, quota: usage(60, 100)),
+])
+check(full.recommendedID == nil, "arrangeAllFullNoStar")
+check(AccountStore.menuLabel(visible: full.visible, recommendedID: full.recommendedID) == "5h 100%", "storeMenuLabelFallsBackToDefault")
 
 if failures.isEmpty {
     print("ALL CHECKS PASSED")

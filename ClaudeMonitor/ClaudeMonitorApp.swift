@@ -9,7 +9,7 @@ import SwiftUI
 
 @main
 struct ClaudeMonitorApp: App {
-    @StateObject private var store = QuotaStore()
+    @StateObject private var store = AccountStore()
 
     var body: some Scene {
         MenuBarExtra {
@@ -24,57 +24,17 @@ struct ClaudeMonitorApp: App {
         .menuBarExtraStyle(.window)
     }
 
-    /// Label menu bar = utilisasi window 5 jam, mis. "5h 26%".
-    private var menuLabel: String {
-        if let u = store.quota?.fiveHour?.utilization {
-            return "5h \(Int(u.rounded()))%"
-        }
-        return ""
-    }
+    private var menuLabel: String { store.menuLabel }
 }
 
 /// Isi popover: satu meter per window kuota.
 struct QuotaPopover: View {
-    @ObservedObject var store: QuotaStore
+    @ObservedObject var store: AccountStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Text(store.profile?.fullName ?? "Kuota Claude")
-                    .font(.headline)
-                if store.profile?.hasClaudeMax == true {
-                    Text("Max")
-                        .font(.caption2).bold()
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-            }
-            if let email = store.profile?.email {
-                Text(email)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
-            Divider()
-
-            // Selalu tampilkan data bila ada — kegagalan sesaat (mis. rate limit)
-            // tidak mengosongkan meter; hanya tampilkan pesan saat belum ada data.
-            if let q = store.quota {
-                meter("Session (5 jam)", q.fiveHour)
-                meter("Weekly (7 hari)", q.sevenDay)
-                meter("Weekly Sonnet (7 hari)", q.sevenDaySonnet)
-                meter("Weekly Opus (7 hari)", q.sevenDayOpus)
-            } else {
-                switch store.state {
-                case .needsLogin:
-                    Text("Sesi kedaluwarsa — login ulang di Claude Code")
-                        .foregroundColor(.secondary)
-                case .error(let msg):
-                    Text(msg).foregroundColor(.secondary)
-                default:
-                    Text("Memuat…").foregroundColor(.secondary)
-                }
+            ForEach(store.accounts) { s in
+                Text("\(s.id == store.recommendedID ? "★ " : "")\(s.account.label): 5h \(Int(s.quota?.fiveHour?.utilization.rounded() ?? 0))%")
             }
 
             Divider()

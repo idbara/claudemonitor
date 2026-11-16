@@ -6,7 +6,7 @@
 import Foundation
 
 /// Satu window kuota (mis. 5 jam / 7 hari).
-struct QuotaWindow: Decodable {
+nonisolated struct QuotaWindow: Decodable {
     let utilization: Double
     let resetsAt: Date?
 
@@ -37,7 +37,7 @@ struct QuotaWindow: Decodable {
 }
 
 /// Hanya window yang kita pakai; sisanya di respons diabaikan.
-struct QuotaUsage: Decodable {
+nonisolated struct QuotaUsage: Decodable {
     let fiveHour: QuotaWindow?
     let sevenDay: QuotaWindow?
     let sevenDaySonnet: QuotaWindow?
