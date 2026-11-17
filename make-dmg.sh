@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # make-dmg.sh — build Claude Monitor (Release) dan kemas jadi .dmg siap-install.
-# Output: dist/Claude Monitor.dmg
+# Output: dist/Claude Monitor.dmg  (atau dist/Claude-Monitor-<VERSION>.dmg bila VERSION diisi)
 #
 # Pemakaian:  ./make-dmg.sh
+#             VERSION=1.2.0 BUILD_NUMBER=7 ./make-dmg.sh   # dipakai workflow rilis
 #
 set -euo pipefail
 
@@ -18,7 +19,18 @@ cd "$ROOT"
 DERIVED="$(mktemp -d)"
 STAGE="$(mktemp -d)/root"
 DIST="$ROOT/dist"
-OUT="$DIST/${APP_NAME}.dmg"
+VERSION="${VERSION:-}"
+BUILD_NUMBER="${BUILD_NUMBER:-}"
+if [ -n "$VERSION" ]; then
+  OUT="$DIST/Claude-Monitor-${VERSION}.dmg"
+else
+  OUT="$DIST/${APP_NAME}.dmg"
+fi
+
+# Override versi hanya bila diisi (tanpa env = perilaku lama).
+XC_OVERRIDES=()
+[ -n "$VERSION" ] && XC_OVERRIDES+=("MARKETING_VERSION=$VERSION")
+[ -n "$BUILD_NUMBER" ] && XC_OVERRIDES+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
 mkdir -p "$DIST" "$STAGE"
 
 cleanup() { rm -rf "$DERIVED" "$(dirname "$STAGE")"; }
@@ -26,7 +38,7 @@ trap cleanup EXIT
 
 echo "==> Build Release…"
 if ! xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
-      -derivedDataPath "$DERIVED" clean build > "$DERIVED/build.log" 2>&1; then
+      -derivedDataPath "$DERIVED" ${XC_OVERRIDES[@]+"${XC_OVERRIDES[@]}"} clean build > "$DERIVED/build.log" 2>&1; then
   echo "!! Build gagal. 20 baris terakhir:"; tail -20 "$DERIVED/build.log"; exit 1
 fi
 
