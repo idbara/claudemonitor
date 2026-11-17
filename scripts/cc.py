@@ -7,6 +7,7 @@ Pemakaian:
   cc status                     tampilkan akun dari Claude Monitor
   cc setup                      sambungkan akun (symlink ke ~/.claude) + pasang hook
   cc account new <nama>         buat akun baru ~/.claude-<nama> (tertaut) lalu login
+  cc account remove <nama>      logout + pindahkan ~/.claude-<nama> ke Tong Sampah (dengan konfirmasi)
   cc account list               sama dengan `cc status`
   cc hook                       dipanggil oleh hook StopFailure (internal)
 
@@ -527,6 +528,58 @@ def account_new(label: str, *, home: Path, login, has_login, install_to: Path, o
     return 0
 
 
+def claude_auth_logout(config_dir: str) -> int:
+    env = dict(os.environ, CLAUDE_CONFIG_DIR=config_dir)
+    return subprocess.call([os.environ.get("CC_CLAUDE_BIN", "claude"), "auth", "logout"], env=env)
+
+
+def _is_linked_account(account: Path, shared: Path) -> bool:
+    projects = account / "projects"
+    return projects.is_symlink() and projects.resolve() == (shared / "projects").resolve()
+
+
+def account_remove(label: str, *, home: Path, logout, confirm, has_login, trash: Path, out) -> int:
+    """Logout akun lalu pindahkan ~/.claude-<label> ke Tong Sampah. Wajib konfirmasi
+    dengan mengetik ulang nama akun. Data bersama di ~/.claude tidak tersentuh
+    (yang ada di folder akun hanya symlink ke sana)."""
+    if not LABEL_RE.match(label or "") or label == "default":
+        out.write("cc: nama akun tidak valid (akun 'default' / ~/.claude tidak bisa dihapus).\n")
+        return 2
+    home = Path(home)
+    shared = home / ".claude"
+    account = home / f".claude-{label}"
+    if not account.is_dir() or account.is_symlink():
+        out.write(f"cc: akun '{label}' tidak ditemukan ({account}).\n")
+        return 1
+    logged_in = has_login(service_for(str(account)))
+    if not logged_in and not _is_linked_account(account, shared):
+        out.write(f"cc: {account} bukan akun cc (tidak ada login dan tidak tertaut ke {shared}); "
+                  "tidak dihapus.\n")
+        return 1
+
+    own = sorted(p.name for p in account.iterdir() if not p.is_symlink())
+    out.write(f"cc akan menghapus akun '{label}':\n")
+    if logged_in:
+        out.write(f"  - logout (hapus login akun ini dari Keychain)\n")
+    out.write(f"  - pindahkan {account} ke {trash}/ (masih bisa dikembalikan)\n")
+    if own:
+        out.write(f"    berisi data milik akun ini: {', '.join(own)}\n")
+    out.write(f"  Riwayat sesi & pengaturan bersama di {shared} tidak terhapus.\n")
+    if confirm(f"Ketik '{label}' untuk konfirmasi: ").strip() != label:
+        out.write("Dibatalkan.\n")
+        return 1
+
+    if logged_in:
+        logout(str(account))
+        if has_login(service_for(str(account))):
+            out.write("cc: peringatan — logout gagal, login akun ini masih ada di Keychain.\n")
+    trash.mkdir(parents=True, exist_ok=True)
+    dest = trash / f"{account.name}-{time.strftime('%Y%m%d-%H%M%S')}"
+    shutil.move(str(account), str(dest))
+    out.write(f"cc: akun '{label}' dihapus (folder ada di {dest}).\n")
+    return 0
+
+
 def account_main(argv: list[str]) -> int:
     if argv[:1] == ["list"] or not argv:
         return status(sys.stdout)
@@ -534,7 +587,11 @@ def account_main(argv: list[str]) -> int:
         return account_new(argv[1], home=Path.home(), login=claude_auth_login,
                            has_login=keychain_has_login,
                            install_to=Path.home() / ".local" / "bin" / "cc", out=sys.stdout)
-    sys.stdout.write("Pemakaian: cc account new <nama> | cc account list\n")
+    if argv[0] == "remove" and len(argv) == 2:
+        return account_remove(argv[1], home=Path.home(), logout=claude_auth_logout,
+                              confirm=input, has_login=keychain_has_login,
+                              trash=Path.home() / ".Trash", out=sys.stdout)
+    sys.stdout.write("Pemakaian: cc account new <nama> | cc account remove <nama> | cc account list\n")
     return 2
 
 

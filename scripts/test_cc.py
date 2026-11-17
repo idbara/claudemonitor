@@ -464,5 +464,77 @@ class AccountNewTests(unittest.TestCase):
         self.assertIn("cc account new kerja", self.out.getvalue())
 
 
+class AccountRemoveTests(unittest.TestCase):
+    def setUp(self):
+        import io
+        self.home = Path(tempfile.mkdtemp()).resolve()
+        self.shared = self.home / ".claude"
+        (self.shared / "projects" / "p").mkdir(parents=True)
+        (self.shared / "projects" / "p" / "s.jsonl").write_text("history")
+        self.account = self.home / ".claude-kerja"
+        self.account.mkdir()
+        os.symlink(self.shared / "projects", self.account / "projects")
+        (self.account / ".claude.json").write_text("{}")
+        self.trash = self.home / ".Trash"
+        self.trash.mkdir()
+        self.out = io.StringIO()
+        self.logins = {cc.service_for(str(self.account))}
+        self.logout_calls, self.prompts = [], []
+
+    def has_login(self, service):
+        return service in self.logins
+
+    def logout(self, config_dir):
+        self.logout_calls.append(config_dir)
+        self.logins.discard(cc.service_for(config_dir))
+        return 0
+
+    def remove(self, label, answer):
+        def confirm(prompt):
+            self.prompts.append(prompt)
+            return answer
+        return cc.account_remove(label, home=self.home, logout=self.logout, confirm=confirm,
+                                 has_login=self.has_login, trash=self.trash, out=self.out)
+
+    def test_remove_requires_typed_name(self):
+        self.assertEqual(self.remove("kerja", "y"), 1)
+        self.assertTrue(self.account.is_dir())
+        self.assertEqual(self.logout_calls, [])
+        self.assertIn("Dibatalkan", self.out.getvalue())
+
+    def test_remove_logs_out_and_moves_to_trash(self):
+        self.assertEqual(self.remove("kerja", "kerja"), 0)
+        self.assertEqual(self.logout_calls, [str(self.account)])
+        self.assertFalse(self.account.exists())
+        trashed = [p for p in self.trash.iterdir() if p.name.startswith(".claude-kerja")]
+        self.assertEqual(len(trashed), 1)
+        self.assertTrue((trashed[0] / ".claude.json").exists())
+        self.assertEqual((self.shared / "projects" / "p" / "s.jsonl").read_text(), "history")
+        self.assertEqual(len(self.prompts), 1)
+
+    def test_remove_refuses_default_and_bad_labels(self):
+        for label in ("default", "", "../x", "a b"):
+            self.assertEqual(self.remove(label, label), 2, label)
+        self.assertEqual(self.prompts, [])
+
+    def test_remove_refuses_non_account_dir(self):
+        other = self.home / ".claude-mem"
+        (other / "data").mkdir(parents=True)
+        self.assertEqual(self.remove("mem", "mem"), 1)
+        self.assertTrue((other / "data").is_dir())
+        self.assertEqual(self.prompts, [])
+        self.assertIn("bukan akun", self.out.getvalue())
+
+    def test_remove_missing_account(self):
+        self.assertEqual(self.remove("nope", "nope"), 1)
+        self.assertEqual(self.prompts, [])
+
+    def test_remove_linked_account_without_login_skips_logout(self):
+        self.logins.clear()
+        self.assertEqual(self.remove("kerja", "kerja"), 0)
+        self.assertEqual(self.logout_calls, [])
+        self.assertFalse(self.account.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

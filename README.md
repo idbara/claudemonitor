@@ -116,9 +116,12 @@ cc status               # daftar akun, status, dan sisa limit
 ```bash
 cc account new kerja    # buat ~/.claude-kerja, tautkan ke ~/.claude, lalu login (browser)
 cc account list         # daftar akun (sama dengan cc status)
+cc account remove kerja # logout + pindahkan ~/.claude-kerja ke Tong Sampah (wajib ketik ulang nama)
 ```
 
 `cc account new` membuat folder `~/.claude-<nama>`, menautkan folder/file bersama ke `~/.claude` (konfigurasi sama dengan akun default), memastikan hook terpasang, lalu menjalankan `claude auth login --claudeai` untuk folder itu. Setelah login berhasil (dicek lewat nama item Keychain), akun langsung bisa dipakai dengan `cc --account kerja` dan muncul di Claude Monitor setelah refresh berikutnya (klik **Always Allow** pada prompt Keychain). Bila login dibatalkan, jalankan perintah yang sama lagi — folder yang sudah ada dipakai ulang.
+
+`cc account remove <nama>` menampilkan apa yang akan dilakukan, lalu meminta Anda **mengetik ulang nama akun** sebagai konfirmasi. Setelah itu ia menjalankan `claude auth logout` untuk akun tersebut (menghapus login-nya dari Keychain) dan **memindahkan** folder `~/.claude-<nama>` ke Tong Sampah (`~/.Trash`), sehingga masih bisa dikembalikan. Riwayat sesi dan pengaturan bersama di `~/.claude` tidak tersentuh, karena folder akun hanya berisi symlink ke sana. Akun `default` (`~/.claude`) dan folder yang bukan akun (mis. `~/.claude-mem`) ditolak.
 
 Saat sebuah giliran gagal karena limit, hook menulis `session_id` lalu menghentikan claude; `cc` mencetak `cc: limit di <a> → lanjut di <b>` dan menjalankan `claude --resume <id> "lanjutkan"` dengan `CLAUDE_CONFIG_DIR` akun berikutnya, di folder yang sama. Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa.
 
