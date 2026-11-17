@@ -536,5 +536,67 @@ class AccountRemoveTests(unittest.TestCase):
         self.assertFalse(self.account.exists())
 
 
+class AccountRelogTests(unittest.TestCase):
+    def setUp(self):
+        import io
+        self.home = Path(tempfile.mkdtemp()).resolve()
+        self.shared = self.home / ".claude"
+        (self.shared / "projects").mkdir(parents=True)
+        self.account = self.home / ".claude-kerja"
+        self.account.mkdir()
+        os.symlink(self.shared / "projects", self.account / "projects")
+        self.out = io.StringIO()
+        self.logins = set()
+        self.calls = []
+
+    def has_login(self, service):
+        return service in self.logins
+
+    def login_ok(self, config_dir):
+        self.calls.append(config_dir)
+        self.logins.add(cc.service_for(config_dir))
+        return 0
+
+    def login_fail(self, config_dir):
+        self.calls.append(config_dir)
+        return 1
+
+    def relog(self, label, login=None):
+        return cc.account_relog(label, home=self.home, login=login or self.login_ok,
+                                has_login=self.has_login, out=self.out)
+
+    def test_relog_existing_account(self):
+        self.assertEqual(self.relog("kerja"), 0)
+        self.assertEqual(self.calls, [str(self.account)])
+        self.assertIn("login ulang 'kerja' berhasil", self.out.getvalue())
+
+    def test_relog_default_uses_no_config_dir(self):
+        self.assertEqual(self.relog("default"), 0)
+        self.assertEqual(self.calls, [None])
+
+    def test_relog_missing_account(self):
+        self.assertEqual(self.relog("nope"), 1)
+        self.assertEqual(self.calls, [])
+
+    def test_relog_refuses_non_account_dir(self):
+        (self.home / ".claude-mem" / "data").mkdir(parents=True)
+        self.assertEqual(self.relog("mem"), 1)
+        self.assertEqual(self.calls, [])
+        self.assertIn("bukan akun", self.out.getvalue())
+
+    def test_relog_bad_label(self):
+        self.assertEqual(self.relog("../x"), 2)
+        self.assertEqual(self.calls, [])
+
+    def test_relog_cancelled_with_existing_login_reports_failure(self):
+        self.logins.add(cc.service_for(str(self.account)))   # login lama masih ada
+        self.assertEqual(self.relog("kerja", login=self.login_fail), 1)
+        self.assertNotIn("berhasil", self.out.getvalue())
+
+    def test_relog_login_failed(self):
+        self.assertEqual(self.relog("kerja", login=self.login_fail), 1)
+        self.assertIn("cc account relog kerja", self.out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -93,6 +93,7 @@ Cara termudah mengelola akun adalah lewat `cc`:
 ```bash
 cc account new kerja      # buat ~/.claude-kerja, samakan konfigurasinya dengan default, lalu login (browser)
 cc account list           # daftar akun, status, dan sisa limit
+cc account relog kerja    # login ulang akun yang sudah ada (token ditolak / ganti akun); juga `default`
 cc account remove kerja   # logout + pindahkan foldernya ke Tong Sampah (ketik ulang nama untuk konfirmasi)
 ```
 

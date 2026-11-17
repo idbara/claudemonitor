@@ -7,6 +7,7 @@ Pemakaian:
   cc status                     tampilkan akun dari Claude Monitor
   cc setup                      sambungkan akun (symlink ke ~/.claude) + pasang hook
   cc account new <nama>         buat akun baru ~/.claude-<nama> (tertaut) lalu login
+  cc account relog <nama>       login ulang akun yang sudah ada (juga 'default')
   cc account remove <nama>      logout + pindahkan ~/.claude-<nama> ke Tong Sampah (dengan konfirmasi)
   cc account list               sama dengan `cc status`
   cc hook                       dipanggil oleh hook StopFailure (internal)
@@ -492,9 +493,13 @@ def setup(home: Path, monitor_path: Path, confirm, install_to: Path, out, has_lo
 LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
-def claude_auth_login(config_dir: str) -> int:
-    """Login Claude (langganan) untuk config dir ini — membuka browser."""
-    env = dict(os.environ, CLAUDE_CONFIG_DIR=config_dir)
+def claude_auth_login(config_dir: str | None) -> int:
+    """Login Claude (langganan) untuk config dir ini (None = ~/.claude) — membuka browser."""
+    env = dict(os.environ)
+    if config_dir is None:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        env["CLAUDE_CONFIG_DIR"] = config_dir
     return subprocess.call([os.environ.get("CC_CLAUDE_BIN", "claude"), "auth", "login", "--claudeai"], env=env)
 
 
@@ -580,6 +585,33 @@ def account_remove(label: str, *, home: Path, logout, confirm, has_login, trash:
     return 0
 
 
+def account_relog(label: str, *, home: Path, login, has_login, out) -> int:
+    """Login ulang akun yang sudah ada — mis. token ditolak atau ganti akun di folder itu."""
+    if label == "default":
+        config_dir = None
+    else:
+        if not LABEL_RE.match(label or ""):
+            out.write("cc: nama akun tidak valid.\n")
+            return 2
+        home = Path(home)
+        account = home / f".claude-{label}"
+        if not account.is_dir() or account.is_symlink():
+            out.write(f"cc: akun '{label}' tidak ditemukan ({account}). Buat dengan `cc account new {label}`.\n")
+            return 1
+        if not has_login(service_for(str(account))) and not _is_linked_account(account, home / ".claude"):
+            out.write(f"cc: {account} bukan akun cc; tidak diubah.\n")
+            return 1
+        config_dir = str(account)
+    out.write(f"cc: login ulang '{label}' (browser)…\n")
+    out.flush()
+    code = login(config_dir)
+    if code != 0 or not has_login(service_for(config_dir)):
+        out.write(f"cc: login belum selesai. Ulangi dengan `cc account relog {label}`.\n")
+        return 1
+    out.write(f"cc: login ulang '{label}' berhasil. Claude Monitor memperbarui datanya pada refresh berikutnya.\n")
+    return 0
+
+
 def account_main(argv: list[str]) -> int:
     if argv[:1] == ["list"] or not argv:
         return status(sys.stdout)
@@ -587,11 +619,14 @@ def account_main(argv: list[str]) -> int:
         return account_new(argv[1], home=Path.home(), login=claude_auth_login,
                            has_login=keychain_has_login,
                            install_to=Path.home() / ".local" / "bin" / "cc", out=sys.stdout)
+    if argv[0] == "relog" and len(argv) == 2:
+        return account_relog(argv[1], home=Path.home(), login=claude_auth_login,
+                             has_login=keychain_has_login, out=sys.stdout)
     if argv[0] == "remove" and len(argv) == 2:
         return account_remove(argv[1], home=Path.home(), logout=claude_auth_logout,
                               confirm=input, has_login=keychain_has_login,
                               trash=Path.home() / ".Trash", out=sys.stdout)
-    sys.stdout.write("Pemakaian: cc account new <nama> | cc account remove <nama> | cc account list\n")
+    sys.stdout.write("Pemakaian: cc account new <nama> | cc account relog <nama> | cc account remove <nama> | cc account list\n")
     return 2
 
 
