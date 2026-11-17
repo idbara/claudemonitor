@@ -302,13 +302,11 @@ App di CI ditandatangani dengan sertifikat **yang sama** seperti build lokal ("C
 
 **Setup sekali (dilakukan sendiri, karena berisi private key):**
 
-1. **Keychain Access** → *My Certificates* → klik kanan **Claude Monitor Self-Signed** → **Export…** → simpan sebagai `cm.p12` dengan password.
-2. Simpan ke secrets repo:
-   ```bash
-   base64 -i cm.p12 | gh secret set MACOS_CERT_P12
-   gh secret set MACOS_CERT_PASSWORD      # ketik password .p12 saat diminta
-   rm cm.p12
-   ```
+```bash
+scripts/set-signing-secrets.sh
+```
+
+Script ini mengekspor identitas "Claude Monitor Self-Signed" dari keychain login (macOS meminta izin dengan password login), lalu mengisi secrets `MACOS_CERT_P12` dan `MACOS_CERT_PASSWORD` dengan password `.p12` yang Anda buat. File `.p12` hanya ada sebentar di folder sementara. Script menolak berjalan bila keychain login berisi identitas lain, agar tidak ada kunci lain yang ikut terunggah — dalam kasus itu, ekspor manual lewat **Keychain Access** → *My Certificates* → klik kanan **Claude Monitor Self-Signed** → **Export…** (`.p12`), lalu `base64 -i cm.p12 | gh secret set MACOS_CERT_P12` dan `gh secret set MACOS_CERT_PASSWORD`, dan hapus `cm.p12`.
 
 **Membuat rilis:**
 
@@ -351,6 +349,7 @@ Checks/main.swift              cek logika Swift (dikompilasi dengan swiftc)
 scripts/cc.py                  pindah akun otomatis (+ test_cc.py)
 make-dmg.sh                    pembuat installer .dmg (VERSION/BUILD_NUMBER opsional)
 scripts/verify-dmg.sh          cek versi & tanda tangan sebuah .dmg
+scripts/set-signing-secrets.sh isi secrets penandatanganan untuk workflow rilis
 .github/workflows/             release → .dmg otomatis
 docs/superpowers/              dokumen desain & rencana implementasi
 CLAUDE.md                      panduan untuk Claude Code di repo ini
