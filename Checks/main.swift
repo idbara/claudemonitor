@@ -177,6 +177,10 @@ check(!np(nst(five: 85, fiveReset: 120)).scheduled.contains { $0.id.contains(".e
 let wk = np(nst(five: nil, seven: 70, sevenReset: 60))
 check(wk.scheduled.first?.title == "kerja · mingguan" && wk.scheduled.first?.body == "Sisa 30% hangus dalam 30 menit — pakai sekarang",
       "weeklyWindowUsesOwnHeadroom")
+// resets_at dari API bergeser sepersekian detik (05:59:59.x vs 06:00:00) → id harus tetap sama.
+let jA = np(nst(five: 82, fiveReset: 70)).newKeys
+let jB = np(nst(five: 82, fiveReset: 70 - 0.4 / 60)).newKeys
+check(jA == jB && np(nst(five: 82, fiveReset: 70 - 0.4 / 60), ledger: jA).immediate.isEmpty, "jitteredResetKeepsSameKey")
 let nq = np(nst(five: 99, fiveReset: 10, quota: false))
 check(nq.immediate.isEmpty && nq.scheduled.isEmpty && nq.newKeys.isEmpty, "noQuotaNoNotes")
 check(NotificationPlanner.countdown(4200) == "1j 10m" && NotificationPlanner.countdown(600) == "10m"

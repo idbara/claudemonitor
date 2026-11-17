@@ -46,7 +46,9 @@ nonisolated enum NotificationPlanner {
                 guard let w else { continue }
                 let util = w.utilization
                 let reset = w.resetsAt
-                let epoch = reset.map { Int($0.timeIntervalSince1970) } ?? 0
+                // resets_at dari API bergeser sepersekian detik antar-refresh → bulatkan ke menit
+                // agar id/ledger tetap sama untuk window yang sama.
+                let epoch = reset.map { Int(($0.timeIntervalSince1970 / 60).rounded()) * 60 } ?? 0
                 let base = "cm.\(s.account.service).\(window.rawValue)"
                 let title = "\(s.account.label) · \(window.label)"
                 let windowLive = reset.map { $0 > now } ?? true
