@@ -294,6 +294,35 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 </details>
 
 <details>
+<summary><b>🚀 Rilis (dmg otomatis lewat GitHub Actions)</b></summary>
+
+Setiap kali sebuah **release dipublikasikan** di GitHub, workflow [`release-dmg.yml`](.github/workflows/release-dmg.yml) mem-build `Claude-Monitor-<versi>.dmg` di runner macOS GitHub dan melampirkannya ke release tersebut. Versi diambil dari tag (`v1.2.0` → `1.2.0`).
+
+App di CI ditandatangani dengan sertifikat **yang sama** seperti build lokal ("Claude Monitor Self-Signed"), sehingga izin Keychain "Always Allow" pengguna tetap berlaku setelah update.
+
+**Setup sekali (dilakukan sendiri, karena berisi private key):**
+
+1. **Keychain Access** → *My Certificates* → klik kanan **Claude Monitor Self-Signed** → **Export…** → simpan sebagai `cm.p12` dengan password.
+2. Simpan ke secrets repo:
+   ```bash
+   base64 -i cm.p12 | gh secret set MACOS_CERT_P12
+   gh secret set MACOS_CERT_PASSWORD      # ketik password .p12 saat diminta
+   rm cm.p12
+   ```
+
+**Membuat rilis:**
+
+```bash
+gh release create v1.0.0 --generate-notes
+```
+
+Beberapa menit kemudian `Claude-Monitor-1.0.0.dmg` muncul di halaman release. Untuk membangun ulang dmg sebuah release yang sudah ada: tab **Actions** → *Release DMG* → *Run workflow* → isi tag.
+
+Build lokal dengan versi: `VERSION=1.2.0 BUILD_NUMBER=7 ./make-dmg.sh`; cek hasilnya dengan `scripts/verify-dmg.sh dist/Claude-Monitor-1.2.0.dmg 1.2.0 7`.
+
+</details>
+
+<details>
 <summary><b>🩹 Troubleshooting</b></summary>
 
 - **Ikon/teks tidak berubah setelah rebuild** — instance lama masih berjalan. `killall "Claude Monitor"`, lalu jalankan build terbaru.
@@ -320,7 +349,9 @@ ClaudeMonitor/                 sumber Swift
 ClaudeMonitor/Assets.xcassets  AppIcon + ikon menu bar (ClaudeLogo)
 Checks/main.swift              cek logika Swift (dikompilasi dengan swiftc)
 scripts/cc.py                  pindah akun otomatis (+ test_cc.py)
-make-dmg.sh                    pembuat installer .dmg
+make-dmg.sh                    pembuat installer .dmg (VERSION/BUILD_NUMBER opsional)
+scripts/verify-dmg.sh          cek versi & tanda tangan sebuah .dmg
+.github/workflows/             release → .dmg otomatis
 docs/superpowers/              dokumen desain & rencana implementasi
 CLAUDE.md                      panduan untuk Claude Code di repo ini
 ```

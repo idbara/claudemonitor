@@ -1,0 +1,105 @@
+# Build Claude Monitor.dmg saat sebuah release dipublikasikan, lalu lampirkan ke release itu.
+#
+# App ditandatangani dengan sertifikat self-signed yang SAMA seperti build lokal
+# ("Claude Monitor Self-Signed"), diambil dari secrets — jangan ganti ke ad-hoc:
+# designated requirement akan berubah tiap rilis dan pengguna diminta password
+# Keychain lagi setiap update. Setup secrets: README › Rilis.
+name: Release DMG
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag release yang sudah ada (mis. v1.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-dmg-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      IDENTITY: Claude Monitor Self-Signed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Versi dari tag
+        run: |
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "Tag $TAG → versi ${TAG#v}, build ${{ github.run_number }}"
+
+      - name: Cek secrets
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::error::Secrets MACOS_CERT_P12 dan MACOS_CERT_PASSWORD belum diisi (lihat README › Rilis)."
+            exit 1
+          fi
+
+      - name: Pilih Xcode terbaru
+        run: |
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Impor sertifikat ke keychain sementara
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          KC_PASS="$(uuidgen)"
+          echo "KC=$KC" >> "$GITHUB_ENV"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" "$KC" > /dev/null
+          EXISTING=()
+          while IFS= read -r k; do
+            k="${k//\"/}"; k="${k#"${k%%[![:space:]]*}"}"
+            [ -n "$k" ] && EXISTING+=("$k")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$KC" "${EXISTING[@]}"
+
+          # Sertifikat self-signed harus dipercaya untuk code signing agar Xcode menemukannya.
+          security find-certificate -c "$IDENTITY" -p "$KC" > "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+
+          security find-identity -v -p codesigning "$KC" | tee "$RUNNER_TEMP/identities.txt"
+          grep -q "$IDENTITY" "$RUNNER_TEMP/identities.txt" \
+            || { echo "::error::Identitas \"$IDENTITY\" tidak ditemukan di .p12"; exit 1; }
+
+      - name: Build dmg
+        run: VERSION="$VERSION" BUILD_NUMBER="${{ github.run_number }}" ./make-dmg.sh
+
+      - name: Pastikan versi & tanda tangan (bukan ad-hoc)
+        run: scripts/verify-dmg.sh "dist/Claude-Monitor-$VERSION.dmg" "$VERSION" "${{ github.run_number }}"
+
+      - name: Lampirkan ke release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "dist/Claude-Monitor-$VERSION.dmg" --clobber
+
+      - name: Bersihkan keychain
+        if: always()
+        run: |
+          [ -n "${KC:-}" ] && security delete-keychain "$KC" || true
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/cert.pem" "$RUNNER_TEMP/identities.txt"

@@ -31,6 +31,8 @@ The app lives entirely in the menu bar via `MenuBarExtra` with `.menuBarExtraSty
 - **Never use the refresh token or write to any `Claude Code-credentials*` item** — refresh tokens rotate, so using one would break Claude Code's login for that account.
 - The OAuth token is sent **only** to `api.anthropic.com`. Token refresh is **not** implemented — on 401 the UI shows "login ulang di Claude Code" (Claude Code keeps the Keychain token fresh).
 
+- **Releases:** `.github/workflows/release-dmg.yml` builds `dist/Claude-Monitor-<version>.dmg` on `release: published` (or `workflow_dispatch` with a tag) on a `macos-26` runner, signing with the **same** self-signed identity imported from secrets `MACOS_CERT_P12` (base64 .p12) / `MACOS_CERT_PASSWORD` into a temporary keychain (trusted via `sudo security add-trusted-cert`). `scripts/verify-dmg.sh` fails the job if the app is ad-hoc signed. **Never switch CI to ad-hoc signing.** `make-dmg.sh` takes optional `VERSION` / `BUILD_NUMBER`.
+
 To re-verify after changes, `curl` the same endpoint with the token and compare to the popover:
 ```bash
 TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w | python3 -c "import sys,json;print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])")
