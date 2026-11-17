@@ -46,6 +46,7 @@ Pernah sedang asyik coding lalu Claude Code tiba-tiba berhenti karena **limit 5 
 | 👥 **Semua akun, tanpa setup** | Setiap akun Claude Code di Mac ini (termasuk yang memakai `CLAUDE_CONFIG_DIR`) terdeteksi sendiri. |
 | ★ **Tahu akun mana yang dipakai dulu** | ★ menandai akun yang sisanya **paling cepat hangus** — sisa ≥ 20% dan reset 5 jam paling dekat. Habiskan dulu sebelum terbuang. |
 | 🔁 **Pindah akun otomatis** | `cc` mendeteksi limit, menutup claude, lalu melanjutkan **sesi yang sama** di akun berikutnya. |
+| 🔔 **Notifikasi tepat waktu** | Diberi tahu saat limit hampir habis, saat sisa akan hangus, saat akun penuh akan bisa dipakai lagi, dan saat limit sudah reset. |
 | 📋 **Satu klik ganti akun** | Klik baris akun → perintah untuk memakainya tersalin ke clipboard. |
 | 🌙 **Diam di background** | Tanpa ikon Dock, opsi **Buka saat login**, refresh tiap 5 menit. |
 | 🔒 **Token tetap milik Claude Code** | Token hanya dikirim ke `api.anthropic.com`, tidak pernah ditulis ke disk, dan refresh token tidak pernah disentuh. |
@@ -173,6 +174,23 @@ cc --account kerja --resume       # pilih dari daftar sesi
 
 ---
 
+## 🔔 Notifikasi
+
+Untuk setiap akun, window **5 jam** dan **mingguan**:
+
+| Notifikasi | Kapan | Contoh |
+|---|---|---|
+| Hampir habis | saat melewati 80%, lalu 95% | *default · 5 jam* — Sudah 82% terpakai — reset 1j 10m lagi |
+| Akan bisa dipakai lagi | 15 menit sebelum reset, bila sudah ≥ 80% | *default · 5 jam* — Hampir penuh (96%) — reset 15 menit lagi |
+| Sisa akan hangus | 30 menit sebelum reset, bila sisa ≥ 20% | *kerja · 5 jam* — Sisa 60% hangus dalam 30 menit — pakai sekarang |
+| Sudah reset | tepat saat reset, bila tadinya ≥ 80% | *default · 5 jam* — Limit 5 jam sudah reset — kembali 100% |
+
+- Notifikasi berbasis waktu **dijadwalkan ke macOS** sehingga datang tepat waktu — bahkan saat app sedang ditutup — dan dijadwal ulang setiap refresh agar angkanya selalu segar.
+- Setiap notifikasi dikirim **sekali** per window; window baru (setelah reset) mulai dari awal.
+- Matikan/nyalakan lewat checkbox **Notifikasi** di bawah popover. Izin notifikasi diminta sekali saat pertama kali.
+
+---
+
 ## 🧭 Membaca popover
 
 - **Klik baris akun** → perintah untuk memakai akun itu tersalin (`Disalin ✓`).
@@ -227,6 +245,8 @@ Claude Code menyimpan login akun default di item Keychain `Claude Code-credentia
 | `ProfileCache.swift` | Profil per akun di `UserDefaults`. |
 | `AccountStore.swift` | Refresh berurutan tiap 5 menit / saat popover dibuka / manual; error per akun; ★. |
 | `AccountsExport.swift` | Menulis `accounts.json` untuk `cc`. |
+| `NotificationPlanner.swift` | Logika murni notifikasi: apa yang dikirim sekarang & yang dijadwalkan. |
+| `LimitNotifier.swift` | Mengirim/menjadwalkan notifikasi (UserNotifications), checkbox Notifikasi. |
 | `LoginItem.swift` | "Buka saat login" lewat `SMAppService`. |
 | `ClaudeMonitorApp.swift` | `MenuBarExtra` + popover. |
 | `scripts/cc.py` | Pembungkus `claude`: pindah akun otomatis, `setup`, `account new/remove/list`. |
@@ -264,8 +284,8 @@ Untuk akun lain, ganti `-s "Claude Code-credentials"` dengan item akun tersebut.
 Proyek ini tidak punya test target Xcode; logika murninya dicek dengan dua perintah:
 
 ```bash
-# Logika Swift (★, penggabungan, label, accounts.json) → ALL CHECKS PASSED
-swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+# Logika Swift (★, penggabungan, label, accounts.json, notifikasi) → ALL CHECKS PASSED
+swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift ClaudeMonitor/NotificationPlanner.swift ClaudeMonitor/LimitNotifier.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 
 # cc → OK
 python3 -m unittest discover -s scripts -p 'test_*.py'
@@ -282,6 +302,7 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 - **Akun tidak muncul** — folder config harus langsung di home (`~/.claude-xxx`) dan pernah login. Paling mudah: `cc account new <nama>`.
 - **Prompt Keychain tidak muncul / ditolak** — buka **Keychain Access**, cari `Claude Code-credentials…`, izinkan "Claude Monitor".
 - **`.dmg` diblokir Gatekeeper di Mac lain** — app ditandatangani sertifikat self-signed (bukan Developer ID, tanpa notarization). Klik kanan app → **Open**, atau `xattr -dr com.apple.quarantine "/Applications/Claude Monitor.app"`.
+- **Notifikasi tidak muncul** — cek mode **Focus/Jangan Ganggu**: selama aktif, macOS menahan banner (notifikasinya tetap ada di Pusat Notifikasi). Izinkan *Claude Monitor* di pengaturan Focus tersebut, atau cek **Pengaturan Sistem › Notifikasi › Claude Monitor**.
 - **"Buka saat login" menunjuk app yang salah** — login item mendaftarkan lokasi app saat itu; aktifkan dari salinan di `/Applications`.
 
 </details>
@@ -290,7 +311,7 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 
 ## 🗺 Belum ada (ide berikutnya)
 
-Grafik riwayat pemakaian · tampilan `extra_usage`/kredit · notifikasi saat mendekati limit · refresh token mandiri (sengaja tidak, demi keamanan login Claude Code).
+Grafik riwayat pemakaian · tampilan `extra_usage`/kredit · refresh token mandiri (sengaja tidak, demi keamanan login Claude Code).
 
 ## 📁 Struktur proyek
 
