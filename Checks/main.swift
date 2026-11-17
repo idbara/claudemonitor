@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift ClaudeMonitor/NotificationPlanner.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation
@@ -122,6 +122,65 @@ check(exportedAccounts.first { $0["id"] as? String == "svc-zed" }?["state"] as? 
 check(exportedAccounts.first?.keys.contains("configDir") == true, "exportHasConfigDirKey")
 let exportText = String(decoding: exportData, as: UTF8.self)
 check(!exportText.contains("email") && !exportText.contains("accessToken"), "exportNoSecrets")
+
+// NotificationPlanner: notifikasi hampir habis / akan bisa dipakai / sisa hangus / sudah reset.
+func isoAt(_ minutes: Double) -> String {
+    let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+    return f.string(from: n0.addingTimeInterval(minutes * 60))
+}
+func win(_ util: Double?, _ resetMin: Double?) -> String {
+    guard let util else { return "null" }
+    let r = resetMin.map { "\"\(isoAt($0))\"" } ?? "null"
+    return #"{"utilization":\#(util),"resets_at":\#(r)}"#
+}
+func nst(five: Double?, fiveReset: Double? = nil, seven: Double? = 0, sevenReset: Double? = nil, quota: Bool = true) -> AccountStatus {
+    let json = #"{"five_hour":\#(win(five, fiveReset)),"seven_day":\#(win(seven, sevenReset))}"#
+    let q = quota ? try! JSONDecoder().decode(QuotaUsage.self, from: Data(json.utf8)) : nil
+    return AccountStatus(account: Account(id: "svc", service: "svc", label: "kerja", command: "claude", configDir: nil),
+                         profile: nil, quota: q, state: .ok, expiresAt: nil)
+}
+func ep(_ minutes: Double) -> Int { Int(n0.addingTimeInterval(minutes * 60).timeIntervalSince1970) }
+func np(_ a: AccountStatus, ledger: Set<String> = []) -> (immediate: [PlannedNote], scheduled: [PlannedNote], newKeys: Set<String>) {
+    NotificationPlanner.plan([a], now: n0, ledger: ledger)
+}
+func kinds(_ notes: [PlannedNote]) -> [String] { notes.map { $0.id.split(separator: ".")[3...].dropLast().joined(separator: ".") } }
+
+let p82 = np(nst(five: 82, fiveReset: 70))
+check(p82.immediate.count == 1 && p82.immediate[0].title == "kerja · 5 jam"
+      && p82.immediate[0].body == "Sudah 82% terpakai — reset 1j 10m lagi"
+      && p82.immediate[0].id == "cm.svc.fiveHour.nearLimit.80.\(ep(70))", "nearLimitAt82")
+let p97 = np(nst(five: 97, fiveReset: 200))
+check(kinds(p97.immediate) == ["nearLimit.95"]
+      && p97.newKeys.contains("cm.svc.fiveHour.nearLimit.80.\(ep(200))")
+      && p97.newKeys.contains("cm.svc.fiveHour.nearLimit.95.\(ep(200))"), "nearLimitJumpSendsOnlyHighest")
+check(np(nst(five: 97, fiveReset: 200), ledger: p97.newKeys).immediate.isEmpty, "nearLimitNotRepeated")
+let p96 = np(nst(five: 96, fiveReset: 120))
+let usable = p96.scheduled.first { $0.id.contains(".usableSoon.") }
+let reset96 = p96.scheduled.first { $0.id.contains(".didReset.") }
+check(usable?.fireDate == n0.addingTimeInterval(105 * 60) && usable?.body == "Hampir penuh (96%) — reset 15 menit lagi"
+      && reset96?.fireDate == n0.addingTimeInterval(120 * 60) && reset96?.body == "Limit 5 jam sudah reset — kembali 100%",
+      "usableSoonScheduled")
+let p40 = np(nst(five: 40, fiveReset: 120, seven: 10))
+check(kinds(p40.scheduled) == ["expiring"] && p40.scheduled[0].fireDate == n0.addingTimeInterval(90 * 60)
+      && p40.scheduled[0].body == "Sisa 60% hangus dalam 30 menit — pakai sekarang" && p40.immediate.isEmpty, "expiringScheduled")
+let late = np(nst(five: 40, fiveReset: 10, seven: 10))
+check(kinds(late.immediate) == ["expiring"] && late.immediate[0].body == "Sisa 60% hangus dalam 10 menit — pakai sekarang"
+      && late.immediate[0].fireDate == nil, "expiringLateImmediate")
+let lateKey = "cm.svc.fiveHour.expiring.\(ep(10))"
+let skipped = np(nst(five: 40, fiveReset: 10, seven: 10), ledger: [lateKey])
+check(skipped.immediate.isEmpty && skipped.scheduled.isEmpty, "scheduledPastSkippedWhenInLedger")
+check(kinds(np(nst(five: 90, fiveReset: -5)).immediate).contains("didReset")
+      && !kinds(np(nst(five: 90, fiveReset: -20)).immediate).contains("didReset"), "didResetLateWithin15")
+let oldKeys: Set<String> = ["cm.svc.fiveHour.nearLimit.80.\(ep(30))"]
+check(kinds(np(nst(five: 82, fiveReset: 330), ledger: oldKeys).immediate) == ["nearLimit.80"], "newWindowRestartsDedup")
+check(!np(nst(five: 85, fiveReset: 120)).scheduled.contains { $0.id.contains(".expiring.") }, "expiringDroppedWhenHeadroomFalls")
+let wk = np(nst(five: nil, seven: 70, sevenReset: 60))
+check(wk.scheduled.first?.title == "kerja · mingguan" && wk.scheduled.first?.body == "Sisa 30% hangus dalam 30 menit — pakai sekarang",
+      "weeklyWindowUsesOwnHeadroom")
+let nq = np(nst(five: 99, fiveReset: 10, quota: false))
+check(nq.immediate.isEmpty && nq.scheduled.isEmpty && nq.newKeys.isEmpty, "noQuotaNoNotes")
+check(NotificationPlanner.countdown(4200) == "1j 10m" && NotificationPlanner.countdown(600) == "10m"
+      && NotificationPlanner.countdown(20) == "<1m", "countdownFormat")
 
 if failures.isEmpty {
     print("ALL CHECKS PASSED")
