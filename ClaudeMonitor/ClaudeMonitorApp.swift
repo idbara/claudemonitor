@@ -13,7 +13,7 @@ struct ClaudeMonitorApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            QuotaPopover(store: store)
+            QuotaPopover(store: store, notifier: store.notifier)
         } label: {
             // Monokrom (template) ikut warna menu bar.
             // Ukuran ikon diatur lewat padding di dalam SVG (frame diabaikan menu bar).
@@ -30,6 +30,7 @@ struct ClaudeMonitorApp: App {
 /// Isi popover: satu baris per akun Claude Code, ★ = disarankan dipakai berikutnya.
 struct QuotaPopover: View {
     @ObservedObject var store: AccountStore
+    @ObservedObject var notifier: LimitNotifier
     @StateObject private var loginItem = LoginItem()
     @State private var expanded: Set<String> = []
     @State private var copiedID: String?
@@ -48,6 +49,16 @@ struct QuotaPopover: View {
             Divider()
             if let updated = store.lastUpdated {
                 Text("Diperbarui \(updated, format: .dateTime.hour().minute().second())")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Toggle("Notifikasi", isOn: Binding(
+                get: { notifier.enabled },
+                set: { notifier.setEnabled($0) }
+            ))
+            .toggleStyle(.checkbox)
+            if notifier.enabled && notifier.denied {
+                Text("Izinkan notifikasi di Pengaturan Sistem › Notifikasi")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

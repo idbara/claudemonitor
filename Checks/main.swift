@@ -2,7 +2,7 @@
 //  Checks/main.swift
 //  Program cek logika murni (project tidak punya test target).
 //  Jalankan:
-//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift ClaudeMonitor/NotificationPlanner.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+//    swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift ClaudeMonitor/NotificationPlanner.swift ClaudeMonitor/LimitNotifier.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
 //
 
 import Foundation

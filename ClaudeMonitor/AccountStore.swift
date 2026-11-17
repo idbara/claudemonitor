@@ -31,6 +31,8 @@ final class AccountStore: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     /// true setelah discovery pertama selesai (bedakan "memuat" vs "tidak ada akun").
     @Published private(set) var hasDiscovered = false
+    /// Notifikasi limit (hampir habis / akan reset / sudah reset).
+    let notifier = LimitNotifier()
 
     // Endpoint oauth/usage dibatasi ketat (429 retry-after ~4 menit), jadi
     // polling jarang. Data utilisasi berubah lambat — 5 menit sudah cukup.
@@ -96,6 +98,7 @@ final class AccountStore: ObservableObject {
                 publish()
             }
             if anyOK { lastUpdated = Date() }
+            notifier.update(accounts: accounts)
         }
     }
 
@@ -149,6 +152,7 @@ final class AccountStore: ObservableObject {
             guard !Task.isCancelled, let self, !self.isRefreshing else { return }
             await self.refreshOne(id)
             self.publish()
+            self.notifier.update(accounts: self.accounts)
         }
     }
 
