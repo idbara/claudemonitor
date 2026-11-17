@@ -1,155 +1,206 @@
+<div align="center">
+
+<img src="ClaudeMonitor/Assets.xcassets/AppIcon.appiconset/icon_128@2x.png" width="128" alt="Ikon Claude Monitor">
+
 # Claude Monitor
 
-Aplikasi **menu bar macOS** yang menampilkan **kuota langganan Claude** Anda secara langsung — sama seperti yang ditampilkan perintah `/usage` di Claude Code, tetapi selalu terlihat di menu bar.
+**Sisa limit semua akun Claude Anda, selalu terlihat di menu bar — dan pindah akun otomatis saat limit habis.**
 
-Data diambil langsung dari Anthropic sebagai **persentase pemakaian** (utilization), jadi bukan estimasi biaya. Anda bisa melihat sekilas seberapa dekat Anda dengan batas sesi 5 jam dan batas mingguan tanpa membuka terminal.
+![macOS 26.5+](https://img.shields.io/badge/macOS-26.5%2B-black?logo=apple)
+![Swift](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)
+![Python](https://img.shields.io/badge/cc-Python%203-3776AB?logo=python&logoColor=white)
+![Tanpa dependency](https://img.shields.io/badge/dependency-nol-brightgreen)
 
----
-
-## Fitur
-
-- **Multi-akun otomatis** — semua akun Claude Code di Mac ini terdeteksi sendiri, termasuk yang dijalankan dengan `CLAUDE_CONFIG_DIR=~/.claude-xxx` (lihat **Multi-akun**).
-- **Rekomendasi ★** — akun yang sisa limitnya paling cepat hangus (sisa ≥ 20% dan reset 5 jam paling dekat) ditandai ★; klik barisnya untuk menyalin perintah `CLAUDE_CONFIG_DIR=… claude`.
-- **Label menu bar** ringkas: `5h 38%` untuk satu akun, atau `★abati 12%` (akun yang disarankan) bila ada beberapa akun.
-- **Berjalan di background** — tanpa ikon Dock, dengan opsi **Buka saat login**.
-- **Popover** berisi satu baris per akun (bar 5 jam + 7 hari); chevron membuka meter lengkap:
-  - **Session (5 jam)** — `five_hour`
-  - **Weekly (7 hari)** — `seven_day`
-  - **Weekly Sonnet (7 hari)** — `seven_day_sonnet`
-  - **Weekly Opus (7 hari)** — `seven_day_opus` *(tersembunyi bila tidak ada pemakaian)*
-- Tiap meter menampilkan **persentase** dan **hitung mundur reset** ("reset dalam Xj Ym").
-- Tiap baris menampilkan nama akun dan badge plan (mis. **Max**).
-- **Refresh otomatis** tiap 5 menit, saat popover dibuka, dan via tombol manual.
-- Aman terhadap **rate limit**: data lama dipertahankan saat gagal sesaat, dan retry menghormati `Retry-After`.
+</div>
 
 ---
 
-## Persyaratan
+Pernah sedang asyik coding lalu Claude Code tiba-tiba berhenti karena **limit 5 jam habis**? Atau punya beberapa akun, tapi tidak tahu mana yang masih punya sisa — dan mana yang sisanya sebentar lagi hangus?
 
-- **macOS 26.5** atau lebih baru.
-- **Xcode** (untuk build) — proyek murni Xcode, tanpa dependency eksternal.
-- **Claude Code sudah login** dengan akun langganan (Pro/Max) di Mac yang sama. Token OAuth-nya disimpan di Keychain dan dipakai bersama oleh aplikasi ini.
+**Claude Monitor** menampilkan pemakaian kuota langganan Claude Anda (data yang sama dengan `/usage` di Claude Code) langsung dari Anthropic, untuk **semua akun sekaligus**. Pasangannya, **`cc`**, menjalankan Claude Code dan **pindah ke akun lain secara otomatis saat limit habis — percakapan tetap berlanjut**.
 
-> Aplikasi ini **tidak** meminta API key. Ia memakai ulang token login Claude Code yang sudah ada.
-
----
-
-## Build & Jalankan
-
-```bash
-# Build (Debug) dari terminal
-xcodebuild -project ClaudeMonitor.xcodeproj -scheme ClaudeMonitor -configuration Debug build
-
-# Atau buka di Xcode lalu tekan ⌘R
-open ClaudeMonitor.xcodeproj
+```
+ ┌─ menu bar ──────────────────────────────┐
+ │                       ✳ ★kerja 18%   🔋  │
+ └─────────────────────────────────────────┘
+ ┌─ Claude Monitor ──────────────────────┐
+ │ ★ kerja   Max  5h ▓▓░░░ 18%  7d 41%   │
+ │   Bara · reset dalam 0j 40m       ›   │
+ │ ───────────────────────────────────── │
+ │   default Max  5h ▓▓▓▓░ 78%  7d 23%   │
+ │   Bara · reset dalam 3j 12m       ›   │
+ │ ───────────────────────────────────── │
+ │   lama         ⚠ token kedaluwarsa    │
+ │ ───────────────────────────────────── │
+ │ Diperbarui 08:12:05                   │
+ │ ☑ Buka saat login                     │
+ │ [Refresh]                    [Quit]   │
+ └───────────────────────────────────────┘
 ```
 
-Hasil build adalah **`Claude Monitor.app`** (di folder `Build/Products/Debug` pada DerivedData). Aplikasi ini hanya tampil di **menu bar** (tanpa ikon Dock, `LSUIElement`) — tidak ada jendela utama.
+## ✨ Sorotan
 
-> Tidak ada test target di proyek ini. Verifikasi dilakukan lewat build yang sukses dan membandingkan angka dengan `/usage` Claude Code atau `curl` (lihat **Verifikasi**).
-
-### Membuat installer (.dmg)
-
-```bash
-./make-dmg.sh
-```
-
-Script mem-build versi **Release** lalu mengemasnya menjadi `dist/Claude Monitor.dmg` (berisi app + alias `Applications` untuk drag-install). App di-*ad-hoc sign* (tanpa Developer ID/notarization), jadi di Mac lain Gatekeeper mungkin memblokir — klik kanan app → **Open**, atau jalankan `xattr -dr com.apple.quarantine "/Applications/Claude Monitor.app"`.
+| | |
+|---|---|
+| 📊 **Angka asli, bukan tebakan** | Persentase pemakaian diambil langsung dari endpoint kuota Anthropic — sama dengan `/usage`. |
+| 👥 **Semua akun, tanpa setup** | Setiap akun Claude Code di Mac ini (termasuk yang memakai `CLAUDE_CONFIG_DIR`) terdeteksi sendiri. |
+| ★ **Tahu akun mana yang dipakai dulu** | ★ menandai akun yang sisanya **paling cepat hangus** — sisa ≥ 20% dan reset 5 jam paling dekat. Habiskan dulu sebelum terbuang. |
+| 🔁 **Pindah akun otomatis** | `cc` mendeteksi limit, menutup claude, lalu melanjutkan **sesi yang sama** di akun berikutnya. |
+| 📋 **Satu klik ganti akun** | Klik baris akun → perintah untuk memakainya tersalin ke clipboard. |
+| 🌙 **Diam di background** | Tanpa ikon Dock, opsi **Buka saat login**, refresh tiap 5 menit. |
+| 🔒 **Token tetap milik Claude Code** | Token hanya dikirim ke `api.anthropic.com`, tidak pernah ditulis ke disk, dan refresh token tidak pernah disentuh. |
 
 ---
 
-## Penggunaan
+## 🚀 Mulai cepat
 
-1. Jalankan **Claude Monitor**. Ikon Claude (sunburst) muncul di menu bar dengan teks `5h NN%` (atau `★akun NN%`).
-2. **Saat pertama kali**, macOS menampilkan prompt untuk **tiap akun** (satu item Keychain per akun):
-   > *"Claude Monitor" wants to use the "Claude Code-credentials…" keychain item.*
-
-   Klik **Always Allow** agar aplikasi bisa membaca token (cukup sekali per akun).
-3. **Klik ikon** di menu bar untuk membuka popover.
-   - **Klik baris akun** → perintah untuk memakai akun itu disalin ke clipboard ("Disalin ✓"); tempel di terminal.
-   - **Chevron** di kanan baris → buka meter lengkap (5 jam, 7 hari, Sonnet, Opus).
-4. Bagian bawah popover:
-   - **Buka saat login** — jalankan otomatis saat login macOS. Aktifkan dari app yang sudah di-install di `/Applications` (yang didaftarkan adalah lokasi app saat itu).
-   - **Refresh** (⌘R) — ambil data terbaru sekarang.
-   - **Quit** (⌘Q) — keluar dari aplikasi.
-
-### Multi-akun
-
-Claude Code menyimpan token akun default di item Keychain `Claude Code-credentials`. Bila dijalankan dengan `CLAUDE_CONFIG_DIR=<folder>`, tokennya disimpan di item terpisah `Claude Code-credentials-<8 hex pertama sha256(path absolut folder)>`.
-
-Claude Monitor membaca daftar item tersebut (tanpa membaca tokennya), lalu mencocokkannya dengan folder `~/.claude*` di home Anda — mis. `~/.claude-abati` → akun **abati**. Item yang foldernya sudah tidak ada diabaikan, dan item dengan akun yang sama (uuid profil sama) digabung menjadi satu baris.
-
-- **★ Rekomendasi** = habiskan dulu limit yang paling cepat hangus. Sisa dihitung `100 − max(5 jam, 7 hari)`; di antara akun dengan sisa **≥ 20%**, yang **reset 5 jamnya paling dekat** menang (reset berselisih < 15 menit → sisa terbesar). Akun yang window 5 jamnya belum berjalan ditaruh paling belakang karena sisanya tidak akan hangus. Bila tak ada akun dengan sisa ≥ 20%, dipilih sisa terbesar. Hanya muncul bila ≥ 2 akun punya data; tidak ada ★ bila semua sudah penuh.
-- **⚠ token kedaluwarsa** = token akun itu sudah lewat masa berlakunya karena lama tidak dipakai. Jalankan `claude` di akun itu (salin perintahnya dari baris) — Claude Code akan menyegarkan tokennya, dan monitor ikut terbarui. Monitor **tidak pernah** memakai refresh token sendiri, supaya login Claude Code tidak rusak.
-- Hanya folder langsung di `$HOME` yang dipindai.
-
-### Ganti akun otomatis (`cc`)
-
-`scripts/cc.py` adalah pembungkus `claude` yang **pindah ke akun lain secara otomatis saat limit habis** dan **melanjutkan percakapan yang sama** (terinspirasi Troupe, ADR-0004).
-
-**Pasang sekali:**
+**1. Build & jalankan app**
 
 ```bash
-python3 scripts/cc.py setup
+open ClaudeMonitor.xcodeproj    # lalu ⌘R
 ```
 
-Tutup semua sesi claude dulu. Setup menampilkan rencananya lalu meminta konfirmasi `y/N`:
+atau buat installer `.dmg` dan seret ke **Applications**:
 
-- Di tiap folder akun (`~/.claude-xxx` yang punya login di Keychain), entri `projects`, `skills`, `plugins`, `rules`, `plans`, `file-history`, `agents`, `commands`, `settings.json`, `CLAUDE.md` dijadikan **symlink ke `~/.claude`** — riwayat sesi, skill, plugin, dan pengaturan jadi sama di semua akun. Login dan `.claude.json` tetap per akun.
-- Isi folder akun yang lama digabung ke `~/.claude` **tanpa menimpa** (versi `~/.claude` menang), lalu yang asli dipindah ke `~/.claude-switch/backup/<akun>-<waktu>/`. Tidak ada yang dihapus.
+```bash
+./make-dmg.sh                   # hasil: dist/Claude Monitor.dmg
+```
+
+**2. Izinkan akses Keychain** — saat pertama kali, macOS bertanya sekali per akun:
+
+> *"Claude Monitor" wants to use the "Claude Code-credentials…" keychain item.*
+
+Klik **Always Allow**. Selesai — ikon ✳ dengan `5h NN%` muncul di menu bar.
+
+**3. (Opsional) Pasang `cc` untuk pindah akun otomatis**
+
+```bash
+python3 scripts/cc.py setup     # tutup semua sesi claude dulu
+cc                              # pakai seperti `claude`
+```
+
+> **Butuh:** macOS 26.5+, Xcode, dan Claude Code yang sudah login dengan akun langganan (Pro/Max). Tidak perlu API key — app memakai login Claude Code yang sudah ada.
+
+---
+
+## 👥 Banyak akun
+
+Setiap akun Claude Code tinggal di foldernya sendiri: `~/.claude` (akun **default**) dan `~/.claude-<nama>` untuk akun lain. Claude Monitor menemukannya sendiri — nama folder jadi label akun (`~/.claude-kerja` → **kerja**).
+
+Cara termudah mengelola akun adalah lewat `cc`:
+
+```bash
+cc account new kerja      # buat ~/.claude-kerja, samakan konfigurasinya dengan default, lalu login (browser)
+cc account list           # daftar akun, status, dan sisa limit
+cc account remove kerja   # logout + pindahkan foldernya ke Tong Sampah (ketik ulang nama untuk konfirmasi)
+```
+
+Akun baru muncul di popover pada refresh berikutnya (klik **Always Allow** di prompt Keychain-nya).
+
+### ★ Akun mana yang dipakai dulu?
+
+Prinsipnya: **habiskan dulu limit yang paling cepat hangus.**
+
+1. Sisa dihitung `100 − max(5 jam, 7 hari)` — jadi limit mingguan tetap diperhitungkan.
+2. Di antara akun dengan sisa **≥ 20%**, yang **reset 5 jamnya paling dekat** menang. Bila resetnya berselisih < 15 menit, yang sisanya lebih besar menang.
+3. Akun yang window 5 jamnya belum berjalan ada di belakang — sisanya tidak akan hangus.
+4. Tidak ada yang ≥ 20%? Dipilih sisa terbesar. Semua penuh? Tidak ada ★.
+
+> Contoh: **kerja** sisa 60%, reset 40 menit lagi · **default** sisa 90%, reset 4 jam lagi → ★ **kerja**. Habiskan dulu 60% itu sebelum hangus; default tetap utuh untuk nanti.
+
+Aturan yang sama dipakai `cc` saat memilih akun.
+
+---
+
+## 🔁 `cc` — pindah akun otomatis
+
+```console
+$ cc
+╭──────────────────────────────────────────────╮
+│ ✻ Claude Code                                │
+╰──────────────────────────────────────────────╯
+> refactor modul pembayaran …
+  ⎿ 5-hour limit reached ∙ resets 10:00
+cc: limit di default → lanjut di kerja
+╭──────────────────────────────────────────────╮
+│ ✻ Claude Code                                │
+╰──────────────────────────────────────────────╯
+> lanjutkan
+  ⏺ Melanjutkan refactor modul pembayaran …
+```
+
+**Cara kerjanya:** saat sebuah giliran gagal karena limit, hook `StopFailure` milik Claude Code memberi tahu `cc`. `cc` menutup claude, memilih akun berikutnya (aturan ★), lalu menjalankan `claude --resume <sesi yang sama> "lanjutkan"` di akun itu — di folder proyek yang sama.
+
+```bash
+cc                        # mulai di akun ★
+cc --account kerja        # mulai di akun tertentu
+cc --model opus           # argumen lain diteruskan ke claude
+cc status                 # daftar akun + sisa limit
+```
+
+Ingin pindah akun **secara manual**? Keluar dari claude (`/exit`), lalu di folder proyek yang sama:
+
+```bash
+cc --account kerja --continue     # lanjutkan sesi terakhir di folder ini
+cc --account kerja --resume       # pilih dari daftar sesi
+```
+
+<details>
+<summary><b>Apa yang dilakukan <code>cc setup</code>?</b></summary>
+
+- Di setiap folder akun (`~/.claude-xxx` yang punya login di Keychain), entri `projects`, `skills`, `plugins`, `rules`, `plans`, `file-history`, `agents`, `commands`, `settings.json`, dan `CLAUDE.md` dijadikan **symlink ke `~/.claude`** — riwayat sesi, skill, plugin, dan pengaturan jadi sama di semua akun. Itulah yang membuat akun mana pun bisa melanjutkan sesi mana pun. Login dan `.claude.json` tetap per akun.
+- Isi lama folder akun digabung ke `~/.claude` **tanpa menimpa** (versi `~/.claude` menang); aslinya dipindah ke `~/.claude-switch/backup/<akun>-<waktu>/`. **Tidak ada yang dihapus.**
 - Menambahkan hook `StopFailure` (matcher `rate_limit`) → `~/.local/bin/cc hook` ke `~/.claude/settings.json` (dicadangkan dulu), dan memasang `cc` ke `~/.local/bin/cc`.
-- Aman dijalankan ulang (idempoten). Jalankan ulang setelah menambah akun baru atau memperbarui `cc.py`.
+- Menampilkan rencananya dulu dan meminta konfirmasi `y/N`. Aman dijalankan ulang — jalankan lagi setelah memperbarui `cc.py`.
 
-> Karena `settings.json` ikut dibagi, pengaturan seperti `model` di `~/.claude/settings.json` kini berlaku untuk semua akun.
+> Karena `settings.json` ikut dibagi, pengaturan seperti `model` di `~/.claude/settings.json` berlaku untuk semua akun.
 
-**Pakai:**
+</details>
 
-```bash
-cc                      # seperti `claude`, mulai di akun ★ (sisa ≥ 20% yang reset paling dekat)
-cc --account abati      # mulai di akun tertentu
-cc --model opus         # argumen lain diteruskan ke claude
-cc status               # daftar akun, status, dan sisa limit
-```
+<details>
+<summary><b>Detail perilaku <code>cc</code></b></summary>
 
-**Menambah akun:**
+- Akun berikutnya dipilih dari `~/Library/Application Support/ClaudeMonitor/accounts.json` yang ditulis Claude Monitor setiap refresh (tanpa token/email): akun `ok` menurut aturan ★, lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tak dipakai — menjalankan claude di sana menyegarkannya). Bila data monitor tidak ada atau lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.
+- Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya.
+- Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa saat pindah akun.
+- Semua akun penuh → `cc: semua akun penuh — reset paling cepat HH:MM`, lalu keluar. Pindah akun maksimal sebanyak jumlah akun per sesi.
+- Sesi `claude` biasa tidak terpengaruh — hook tidak melakukan apa-apa di luar `cc`.
+- Giliran pertama setelah pindah akun sedikit lebih mahal karena prompt cache dibangun ulang.
+- `cc` tidak pernah membaca token; setup hanya mengecek *nama* item Keychain.
+- `cc account remove` menolak akun `default` dan folder yang bukan akun (mis. `~/.claude-mem`).
 
-```bash
-cc account new kerja    # buat ~/.claude-kerja, tautkan ke ~/.claude, lalu login (browser)
-cc account list         # daftar akun (sama dengan cc status)
-cc account remove kerja # logout + pindahkan ~/.claude-kerja ke Tong Sampah (wajib ketik ulang nama)
-```
+</details>
 
-`cc account new` membuat folder `~/.claude-<nama>`, menautkan folder/file bersama ke `~/.claude` (konfigurasi sama dengan akun default), memastikan hook terpasang, lalu menjalankan `claude auth login --claudeai` untuk folder itu. Setelah login berhasil (dicek lewat nama item Keychain), akun langsung bisa dipakai dengan `cc --account kerja` dan muncul di Claude Monitor setelah refresh berikutnya (klik **Always Allow** pada prompt Keychain). Bila login dibatalkan, jalankan perintah yang sama lagi — folder yang sudah ada dipakai ulang.
+---
 
-`cc account remove <nama>` menampilkan apa yang akan dilakukan, lalu meminta Anda **mengetik ulang nama akun** sebagai konfirmasi. Setelah itu ia menjalankan `claude auth logout` untuk akun tersebut (menghapus login-nya dari Keychain) dan **memindahkan** folder `~/.claude-<nama>` ke Tong Sampah (`~/.Trash`), sehingga masih bisa dikembalikan. Riwayat sesi dan pengaturan bersama di `~/.claude` tidak tersentuh, karena folder akun hanya berisi symlink ke sana. Akun `default` (`~/.claude`) dan folder yang bukan akun (mis. `~/.claude-mem`) ditolak.
+## 🧭 Membaca popover
 
-Saat sebuah giliran gagal karena limit, hook menulis `session_id` lalu menghentikan claude; `cc` mencetak `cc: limit di <a> → lanjut di <b>` dan menjalankan `claude --resume <id> "lanjutkan"` dengan `CLAUDE_CONFIG_DIR` akun berikutnya, di folder yang sama. Flag `--model`, `--permission-mode`, `--dangerously-skip-permissions`, dan `--add-dir` ikut dibawa.
-
-- Akun berikutnya dipilih dari `accounts.json` yang ditulis Claude Monitor (`~/Library/Application Support/ClaudeMonitor/accounts.json`): akun `ok` dengan aturan yang sama seperti ★ (sisa ≥ 20% yang reset 5 jamnya paling dekat), lalu akun yang tokennya kedaluwarsa (biasanya hanya karena lama tidak dipakai). Akun yang baru kena limit dicatat di `~/.claude-switch/limited.json` sampai waktu reset-nya. Bila data monitor tidak ada/lebih tua 15 menit, `cc` memakai folder akun yang sudah tertaut.
-- Bila semua akun penuh: `cc: semua akun penuh — reset paling cepat HH:MM`, lalu keluar.
-- Sesi yang dijalankan dengan `claude` biasa tidak terpengaruh — hook tidak melakukan apa-apa di luar `cc`.
-- Giliran pertama setelah pindah akun lebih mahal karena prompt cache dibangun ulang.
-- `cc` maupun hook tidak pernah membaca token atau item Keychain (setup hanya mengecek *nama* item Keychain tanpa membaca isinya).
-
-### Membaca angkanya
-
-- Angka persen = **utilization** dari Anthropic (0–100%). Makin tinggi = makin dekat ke batas.
-- "reset dalam Xj Ym" = perkiraan waktu jendela kuota tersebut ter-reset.
-- Meter **Weekly Opus** hanya muncul bila ada pemakaian Opus pada minggu berjalan.
-
-### Pesan status
+- **Klik baris akun** → perintah untuk memakai akun itu tersalin (`Disalin ✓`).
+- **Chevron ›** → meter lengkap: Session (5 jam), Weekly (7 hari), Weekly Sonnet, Weekly Opus — masing-masing dengan hitung mundur reset.
+- Angka persen = **utilization** dari Anthropic (0–100%). Makin tinggi, makin dekat ke batas.
+- Label menu bar: `5h 38%` untuk satu akun, atau `★kerja 18%` (akun yang disarankan) bila ada beberapa.
 
 | Tampilan | Arti |
 |---|---|
 | `Memuat…` | Sedang mengambil data pertama kali. |
-| `⚠ token kedaluwarsa — jalankan claude di akun ini` | Token akun lewat masa berlaku atau ditolak (401). Jalankan `claude` di akun itu. |
-| `Dibatasi sementara oleh Anthropic — mencoba lagi…` | Kena rate limit; akan retry otomatis. |
-| `Tidak menemukan/baca kredensial Claude Code` | Keychain belum berisi token, atau izin ditolak. |
+| `⚠ token kedaluwarsa — jalankan claude di akun ini` | Token akun lewat masa berlaku atau ditolak. Jalankan `claude` di akun itu (salin perintahnya dari baris). |
+| `Dibatasi sementara oleh Anthropic — mencoba lagi…` | Kena rate limit; akan dicoba lagi otomatis. |
+| `Tidak menemukan/baca kredensial Claude Code` | Belum ada login di Keychain, atau izin ditolak. |
 | `Tidak bisa terhubung ke Anthropic` | Masalah jaringan. |
 
 ---
 
-## Cara Kerja
+## 🔒 Privasi & keamanan
+
+- Token OAuth **hanya** dikirim ke `api.anthropic.com`, pemilik sah token tersebut.
+- Token **tidak pernah ditulis ke disk**. Yang disimpan hanya profil akun (uuid, nama, email, plan) di `UserDefaults` app, agar akun yang tokennya kedaluwarsa tetap punya nama. `accounts.json` untuk `cc` tidak berisi token maupun email.
+- App **tidak pernah** memakai refresh token atau menulis ke item Keychain Claude Code — refresh token berputar, dan memakainya bisa merusak login Claude Code.
+- **App Sandbox dimatikan** (`ENABLE_APP_SANDBOX = NO`): app tersandbox tidak bisa membaca item Keychain milik Claude Code.
+
+---
+
+<details>
+<summary><b>🛠 Cara kerja (untuk developer)</b></summary>
 
 ```
 Keychain ("Claude Code-credentials", "Claude Code-credentials-<hash>", …)
@@ -159,20 +210,28 @@ Keychain ("Claude Code-credentials", "Claude Code-credentials-<hash>", …)
    QuotaClient ──HTTP GET──▶ https://api.anthropic.com/api/oauth/usage
         │                                     └─▶ /api/oauth/profile (nama, email, plan, uuid)
         ▼
-   AccountStore (@MainActor): refresh berurutan, gabung duplikat, pilih ★  ──▶  MenuBarExtra UI
+   AccountStore (@MainActor): refresh berurutan, gabung duplikat, pilih ★
+        ├──▶ MenuBarExtra UI
+        └──▶ accounts.json ──▶ cc (scripts/cc.py)
 ```
 
-- **`Credentials.swift`** — membaca daftar item Keychain `Claude Code-credentials*` (atribut saja) dan token OAuth per item (`claudeAiOauth.accessToken`, `expiresAt`) lewat Security framework. `refreshToken` tidak pernah disentuh.
-- **`Account.swift`** — `AccountDiscovery`: mencocokkan item Keychain dengan folder `~/.claude*` lewat hash path.
-- **`AccountMath.swift`** — logika murni: nama item Keychain dari path, label, perintah peluncuran, penggabungan duplikat, rekomendasi ★, label menu bar.
-- **`QuotaClient.swift`** — `GET` async ke endpoint Anthropic dengan header `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20`, `anthropic-version: 2023-06-01`. Memetakan 401/403 → perlu login, 429 → rate limited.
-- **`QuotaUsage.swift` / `Profile.swift`** — model `Decodable` untuk respons kuota & profil.
-- **`ProfileCache.swift`** — menyimpan profil (uuid, nama, email, plan) per item Keychain di `UserDefaults`, supaya akun dengan token kedaluwarsa tetap punya nama.
-- **`AccountStore.swift`** — `ObservableObject` yang menemukan akun, me-refresh tiap akun **berurutan** (timer 5 menit, saat popover muncul, dan manual), memetakan error per akun, menggabungkan duplikat, dan memilih ★.
-- **`LoginItem.swift`** — toggle "Buka saat login" lewat `SMAppService.mainApp`.
-- **`ClaudeMonitorApp.swift`** — `MenuBarExtra` + tampilan popover (`QuotaPopover`, satu baris per akun).
+Claude Code menyimpan login akun default di item Keychain `Claude Code-credentials`, dan login untuk `CLAUDE_CONFIG_DIR=<folder>` di `Claude Code-credentials-<8 hex pertama sha256(path absolut folder)>`. App membaca daftar item itu (atribut saja), mencocokkannya dengan folder `~/.claude*`, membuang item yang foldernya sudah tidak ada, dan menggabungkan item dengan akun yang sama (uuid profil).
 
-### Endpoint kuota (respons)
+| File | Tugas |
+|---|---|
+| `Credentials.swift` | Daftar item Keychain `Claude Code-credentials*` dan token per item (`accessToken`, `expiresAt`). |
+| `Account.swift` | `AccountDiscovery`: item Keychain ↔ folder `~/.claude*`. |
+| `AccountMath.swift` | Logika murni: nama item dari path, label, perintah peluncuran, penggabungan, ★, label menu bar. |
+| `QuotaClient.swift` | `GET` ke `oauth/usage` & `oauth/profile` (401/403 → perlu login, 429 → rate limited). |
+| `QuotaUsage.swift`, `Profile.swift` | Model respons. |
+| `ProfileCache.swift` | Profil per akun di `UserDefaults`. |
+| `AccountStore.swift` | Refresh berurutan tiap 5 menit / saat popover dibuka / manual; error per akun; ★. |
+| `AccountsExport.swift` | Menulis `accounts.json` untuk `cc`. |
+| `LoginItem.swift` | "Buka saat login" lewat `SMAppService`. |
+| `ClaudeMonitorApp.swift` | `MenuBarExtra` + popover. |
+| `scripts/cc.py` | Pembungkus `claude`: pindah akun otomatis, `setup`, `account new/remove/list`. |
+
+**Contoh respons endpoint kuota:**
 
 ```json
 {
@@ -183,20 +242,12 @@ Keychain ("Claude Code-credentials", "Claude Code-credentials-<hash>", …)
 }
 ```
 
----
+</details>
 
-## Privasi & Keamanan
+<details>
+<summary><b>✅ Verifikasi & tes</b></summary>
 
-- Token OAuth **hanya** dikirim ke `api.anthropic.com` — pemilik sah token tersebut. Tidak dikirim ke pihak lain.
-- Token tidak pernah ditulis ke disk oleh aplikasi. Yang disimpan hanya **profil akun** (uuid, nama, email, status plan) di `UserDefaults` aplikasi (`~/Library/Preferences/id.misindo.ClaudeMonitor.plist`) untuk menamai akun yang tokennya kedaluwarsa.
-- Aplikasi **tidak pernah** memakai refresh token atau menulis ke item Keychain Claude Code.
-- **App Sandbox dimatikan** (`ENABLE_APP_SANDBOX = NO`). Ini wajib: aplikasi tersandbox tidak bisa membaca item Keychain milik aplikasi lain (Claude Code) maupun melakukan panggilan jaringan tanpa entitlement.
-
----
-
-## Verifikasi
-
-Bandingkan angka di popover dengan respons mentah endpoint yang sama:
+Bandingkan angka di popover dengan respons mentah endpoint:
 
 ```bash
 TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w \
@@ -208,50 +259,49 @@ curl -sS https://api.anthropic.com/api/oauth/usage \
   -H "anthropic-version: 2023-06-01" | python3 -m json.tool
 ```
 
-`five_hour` / `seven_day` / `seven_day_sonnet` harus sama dengan yang ditampilkan aplikasi. Untuk akun lain, ganti `-s "Claude Code-credentials"` dengan item akun tersebut (mis. `-s "Claude Code-credentials-c6b43821"`; daftar lengkap: `security dump-keychain | grep -o '"svce"<blob>="Claude Code[^"]*"' | sort -u`).
+Untuk akun lain, ganti `-s "Claude Code-credentials"` dengan item akun tersebut. Daftar item: `security dump-keychain | grep -o '"svce"<blob>="Claude Code[^"]*"' | sort -u`.
 
-Logika murni (hash nama item, label, penggabungan, ★, label menu bar) dicek lewat program kecil, karena proyek tidak punya test target:
+Proyek ini tidak punya test target Xcode; logika murninya dicek dengan dua perintah:
 
 ```bash
-swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+# Logika Swift (★, penggabungan, label, accounts.json) → ALL CHECKS PASSED
+swiftc ClaudeMonitor/AccountMath.swift ClaudeMonitor/Account.swift ClaudeMonitor/Credentials.swift ClaudeMonitor/Profile.swift ClaudeMonitor/ProfileCache.swift ClaudeMonitor/QuotaUsage.swift ClaudeMonitor/QuotaClient.swift ClaudeMonitor/AccountStore.swift ClaudeMonitor/AccountsExport.swift Checks/main.swift -o "$TMPDIR/am-checks" && "$TMPDIR/am-checks"
+
+# cc → OK
+python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
-Hasil yang diharapkan: `ALL CHECKS PASSED`.
+</details>
+
+<details>
+<summary><b>🩹 Troubleshooting</b></summary>
+
+- **Ikon/teks tidak berubah setelah rebuild** — instance lama masih berjalan. `killall "Claude Monitor"`, lalu jalankan build terbaru.
+- **Sering "Dibatasi sementara"** — endpoint kuota dibatasi ketat. App sudah polling jarang (5 menit); hindari menekan Refresh berkali-kali.
+- **"⚠ token kedaluwarsa"** — jalankan `claude` di akun itu (klik barisnya untuk menyalin perintah); bila masih ditolak, login ulang.
+- **Akun tidak muncul** — folder config harus langsung di home (`~/.claude-xxx`) dan pernah login. Paling mudah: `cc account new <nama>`.
+- **Prompt Keychain tidak muncul / ditolak** — buka **Keychain Access**, cari `Claude Code-credentials…`, izinkan "Claude Monitor".
+- **`.dmg` diblokir Gatekeeper di Mac lain** — app ditandatangani sertifikat self-signed (bukan Developer ID, tanpa notarization). Klik kanan app → **Open**, atau `xattr -dr com.apple.quarantine "/Applications/Claude Monitor.app"`.
+- **"Buka saat login" menunjuk app yang salah** — login item mendaftarkan lokasi app saat itu; aktifkan dari salinan di `/Applications`.
+
+</details>
 
 ---
 
-## Troubleshooting
+## 🗺 Belum ada (ide berikutnya)
 
-- **Ikon/teks tidak berubah setelah rebuild** — instance lama masih berjalan. Keluarkan dulu (`Quit`/`killall "Claude Monitor"`), lalu jalankan build terbaru.
-- **Sering "Dibatasi sementara"** — endpoint kuota dibatasi ketat. Aplikasi sudah polling jarang (5 menit) dan menahan permintaan bertumpuk; hindari menekan Refresh berkali-kali.
-- **"⚠ token kedaluwarsa"** — token akun itu kedaluwarsa/ditolak. Jalankan `claude` di akun tersebut (klik barisnya untuk menyalin perintah); bila masih ditolak, login ulang di Claude Code. Aplikasi ini tidak mengelola refresh OAuth sendiri.
-- **Akun tidak muncul** — folder config-nya harus berada langsung di home (`~/.claude-xxx`) dan Claude Code harus pernah login dengan folder itu.
-- **Prompt Keychain tidak muncul / ditolak** — buka **Keychain Access**, cari item `Claude Code-credentials…`, dan pastikan "Claude Monitor" diizinkan mengaksesnya.
+Grafik riwayat pemakaian · tampilan `extra_usage`/kredit · notifikasi saat mendekati limit · refresh token mandiri (sengaja tidak, demi keamanan login Claude Code).
 
----
-
-## Batasan (di luar cakupan saat ini)
-
-Refresh token OAuth mandiri, grafik historis, tampilan `extra_usage`/kredit, dan notifikasi saat mendekati limit belum diimplementasikan.
-
----
-
-## Struktur Proyek
+## 📁 Struktur proyek
 
 ```
-ClaudeMonitor/                 sumber Swift (lihat "Cara Kerja")
+ClaudeMonitor/                 sumber Swift
 ClaudeMonitor/Assets.xcassets  AppIcon + ikon menu bar (ClaudeLogo)
-Checks/main.swift              program cek logika murni (dikompilasi dengan swiftc)
-scripts/cc.py                  pembungkus `claude` dengan ganti akun otomatis (+ test_cc.py)
-docs/superpowers/specs/        dokumen desain
-docs/superpowers/plans/        rencana implementasi
+Checks/main.swift              cek logika Swift (dikompilasi dengan swiftc)
+scripts/cc.py                  pindah akun otomatis (+ test_cc.py)
+make-dmg.sh                    pembuat installer .dmg
+docs/superpowers/              dokumen desain & rencana implementasi
 CLAUDE.md                      panduan untuk Claude Code di repo ini
 ```
 
-> Catatan riwayat: versi awal aplikasi ini mem-parsing log lokal Claude Code (`~/.claude/projects/**/*.jsonl`) untuk mengestimasi biaya. Pendekatan itu telah digantikan oleh endpoint kuota resmi; dokumen `2026-05-30-usage-integration*` di `docs/` tetap disimpan sebagai catatan sejarah.
-
----
-
-## Lisensi
-
-Proyek pribadi. Logo dan merek "Claude" adalah milik Anthropic.
+<sub>Versi awal app ini mengestimasi biaya dari log lokal Claude Code; pendekatan itu digantikan endpoint kuota resmi (catatannya tetap di `docs/`). Pendekatan multi-akun `cc` terinspirasi Troupe (ADR-0004). Proyek pribadi — logo dan merek "Claude" milik Anthropic.</sub>
